@@ -1,6 +1,6 @@
 {
   "name": "fattureincloud-mcp",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "MCP server per Fatture in Cloud: fatture ricorrenti, duplicazione e invii in blocco, SdI, incassi, report forfettario e tutta l API v2",
   "mcpName": "io.github.NiccoloSalvini/fattureincloud-mcp",
   "type": "module",
@@ -18,8 +18,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc",
-    "prepare": "tsc",
+    "build": "tsc && node scripts/bundle-xlsx.mjs",
+    "prepare": "npm run build",
     "dev": "tsc --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
@@ -52,12 +52,13 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
     "fflate": "^0.8.3",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

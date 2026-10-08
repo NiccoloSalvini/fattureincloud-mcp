@@ -9,7 +9,7 @@ const stage = path.join(root, "build", "mcpb");
 const out = path.join(root, "build", `fattureincloud-mcp-${pkg.version}.mcpb`);
 const run = (cmd, args, cwd = root) => execFileSync(cmd, args, { cwd, stdio: "inherit" });
 
-run("npx", ["tsc"]);
+run("npm", ["run", "build"]);
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 for (const f of ["dist", "README.md", "LICENSE", "package.json", "package-lock.json"]) cpSync(path.join(root, f), path.join(stage, f), { recursive: true });
