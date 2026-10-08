@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.3.0 (matching package.json) to publish:
+# Push a tag like v0.3.1 (matching package.json) to publish:
 # npm package, GitHub release with the Claude Desktop extension (.mcpb), MCP Registry entry.
 on:
   push:
@@ -9,15 +9,13 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     permissions:
       contents: write # GitHub release
-      id-token: write # npm provenance + MCP Registry OIDC login
+      id-token: write # npm trusted publishing + MCP Registry OIDC login
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -31,11 +29,12 @@ jobs:
       - run: npm test
       - run: npm run build
 
+      # Trusted publishing (OIDC): no token. Configure once on npmjs.com →
+      # package → Settings → Trusted Publisher → GitHub Actions, workflow release.yml.
       - name: Publish to npm
-        if: env.NPM_TOKEN != ''
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm install -g npm@latest
+          npm publish --access public
 
       - name: Build Claude Desktop extension
         run: npm run build:mcpb
@@ -47,9 +46,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" build/*.mcpb \
             --title "$GITHUB_REF_NAME" --generate-notes
 
-      # The registry entry points at the npm package, so it needs the npm publish above.
       - name: Prepare server.json
-        if: env.NPM_TOKEN != ''
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           FILE="fattureincloud-mcp-${VERSION}.mcpb"
@@ -68,7 +65,6 @@ jobs:
           cat server.json
 
       - name: Publish to MCP Registry
-        if: env.NPM_TOKEN != ''
         run: |
           curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login github-oidc
