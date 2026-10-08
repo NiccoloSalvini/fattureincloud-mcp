@@ -26,6 +26,7 @@
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "fflate": "^0.8.3",
     "zod": "^4.6.5"
   },
   "devDependencies": {

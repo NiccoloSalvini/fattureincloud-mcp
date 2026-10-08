@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { FicClient } from "../client.js";
 import type { ScheduleStore } from "../schedules.js";
 
-export const TOOLSETS = ["documents", "registry", "received", "accounting", "automation", "reports", "taxes", "admin"] as const;
+export const TOOLSETS = ["documents", "registry", "received", "accounting", "automation", "reports", "taxes", "planning", "admin"] as const;
 export type Toolset = (typeof TOOLSETS)[number];
 
 export interface Ctx {
