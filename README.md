@@ -8,6 +8,7 @@ Fa quello che l'app non fa:
 - **Duplicazione vera.** Copia una fattura con nuova data, numero successivo, scadenze ricalcolate, bollo e conto di pagamento, cambiando solo le righe che vuoi.
 - **Operazioni in blocco.** Duplicare, inviare allo SdI, mandare per email o segnare come pagate decine di fatture con un comando, con anteprima obbligatoria prima di agire.
 - **Controlli e report.** Crediti scaduti per cliente, fatturato e incassato per mese, distanza dalla **soglia del forfettario** (85.000 €, principio di cassa), **bollo mancante**, fatture elettroniche non inviate o scartate, buchi nella numerazione.
+- **Tasse del forfettario.** Imposta sostitutiva e contributi INPS stimati dagli incassi reali: quanto pagare il 30 giugno (saldo e 1° acconto) e il 30 novembre (2° acconto), il totale annuo e la percentuale da accantonare.
 - **Tutta l'API v2.** Documenti emessi e ricevuti, clienti, fornitori, prodotti, corrispettivi, F24, archivio, prima nota, allegati, cestino, impostazioni. Quello che non ha un tool dedicato passa da `api_request`.
 
 > English: MCP server for the Italian invoicing SaaS Fatture in Cloud. Recurring invoices, real document duplication, bulk e-invoice (SdI) sending, receivables and *regime forfettario* reports, plus full CRUD over the v2 API. Tool descriptions are in Italian because the domain is Italian.
@@ -21,6 +22,7 @@ Fa quello che l'app non fa:
 - «Trasforma la proforma 12 in fattura elettronica e verifica l'XML.»
 - «Ci sono fatture sopra 77,47 € senza bollo?»
 - «Scarica i PDF delle fatture di ottobre in ~/Documenti/fatture.»
+- «Quante tasse pago il 30 giugno e il 30 novembre? Quanto devo accantonare per ogni fattura?»
 
 ## Installazione
 
@@ -28,7 +30,14 @@ Serve Node.js 20 o superiore.
 
 ### 1. Token
 
-In Fatture in Cloud apri **Impostazioni → Sviluppatori** e crea un [token manuale](https://developers.fattureincloud.it/docs/authentication/manual-authentication/) con i permessi che ti servono: almeno lettura e scrittura sui documenti emessi e sui clienti, più le altre risorse se vuoi gestirle. I token manuali non scadono e si revocano dalla stessa pagina.
+In Fatture in Cloud:
+
+1. Apri **Impostazioni → App e API** (area sviluppatori) e crea un'**applicazione privata**, ad esempio `mcp-fattureincloud`.
+2. In «Autenticazione e accesso» spunta **solo «Token personale»** e togli OAuth 2.0: così il Redirect URL non serve. Salva.
+3. Dalla pagina dell'app genera il token: scegli l'azienda e i permessi. Servono almeno lettura e scrittura su documenti emessi e clienti; per report e tasse basta la lettura sul resto; aggiungi la scrittura sulle altre risorse che vuoi gestire.
+4. Copia il token: non viene più mostrato. Non incollarlo in chat. Mettilo nella configurazione del client MCP o in `~/.config/fattureincloud-mcp/.env`.
+
+I token personali non scadono e si revocano dalla stessa pagina ([guida ufficiale](https://developers.fattureincloud.it/docs/authentication/manual-authentication/)).
 
 ### 2. Client MCP
 
@@ -106,7 +115,7 @@ fattureincloud-mcp run-due --dry-run
 
 ## Strumenti
 
-79 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
+82 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
 
 **documents**: documenti emessi
 - `list_/get_/create_/update_/delete_issued_document(s)`
@@ -132,6 +141,10 @@ fattureincloud-mcp run-due --dry-run
 - `audit_documents`: fatture elettroniche non inviate o scartate, bollo mancante, pagamenti scaduti, numerazione
 - `client_statement`: estratto conto di un cliente
 
+**taxes**
+- `tax_profile_set`, `tax_profile_get`: coefficiente, aliquota, previdenza, versamenti reali
+- `tax_estimate`: scadenze del 30 giugno e del 30 novembre, totale annuo, quota da accantonare
+
 **registry**: CRUD su `clients`, `suppliers`, `products`
 
 **received**: CRUD su `received_documents` (spese, note di credito passive)
@@ -149,6 +162,26 @@ I filtri `q` usano la sintassi di Fatture in Cloud, ad esempio `date >= '2026-01
 **Prompt inclusi**
 - `chiusura_mese`: controllo di fine mese completo, senza azioni irreversibili
 - `nuova_ricorrenza`: crea una fattura ricorrente guidata
+
+## Tasse (regime forfettario)
+
+`tax_estimate` stima quanto versi e quando, partendo dagli incassi registrati in Fatture in Cloud. Prima imposti il profilo una volta sola con `tax_profile_set`, ad esempio chiedendo a Claude: «sono un professionista in gestione separata, coefficiente 78%, aliquota 15%, partita IVA aperta nel 2024».
+
+Il calcolo:
+
+| | |
+| --- | --- |
+| Reddito lordo | incassi dell'anno × coefficiente di redditività (78% professionisti, 67%, 40%, 86%, 62% secondo l'ATECO) |
+| Contributi | gestione separata 26,07% sul reddito lordo, oppure artigiani/commercianti (fissi più eccedenza, con riduzione del 35% facoltativa), oppure cassa professionale |
+| Imponibile | reddito lordo − contributi **versati** nell'anno (saldo dell'anno prima + acconti) |
+| Imposta sostitutiva | 15%, o 5% per i primi cinque anni se spetta |
+| 30 giugno | saldo dell'anno prima + 1° acconto (imposta e contributi) |
+| 30 novembre | 2° acconto |
+| Acconti | imposta: 100% dell'anno prima in due rate al 50%, nessun acconto sotto 51,65 €, rata unica a novembre sotto 257,52 €; gestione separata: 80% in due rate al 40% |
+
+Per l'anno in corso gli incassi vengono proiettati a fine anno, oppure usi solo quelli avvenuti (`projection: "to_date"`) o una tua stima (`revenue_estimate`). Se hai versato importi diversi da quelli calcolati, o hai incassi fuori da Fatture in Cloud, inseriscili per anno in `overrides`: la stima diventa esatta. Il risultato include anche la percentuale da accantonare su ogni incasso e l'avviso quando gli acconti superano l'imposta, caso in cui conviene il metodo previsionale.
+
+È una stima per pianificare la liquidità, non un calcolo da dichiarazione: aliquote e massimali cambiano ogni anno (i default sono quelli del 2025 e si possono modificare nel profilo), e prima di pagare conviene il controllo del commercialista.
 
 ## Server HTTP
 
@@ -187,6 +220,7 @@ Struttura:
 - `src/copy.ts`: logica di duplicazione e segnaposto
 - `src/schedules.ts`, `src/runner.ts`: ricorrenze
 - `src/reports.ts`: crediti, ricavi, controlli (funzioni pure)
+- `src/taxes.ts`: modello di imposta e contributi del forfettario
 - `src/tools/`: definizione dei tool; i CRUD sono generati da una tabella in `crud.ts`
 
 Le PR sono benvenute. Il progetto non è affiliato a Fatture in Cloud né a TeamSystem.

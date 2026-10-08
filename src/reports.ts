@@ -253,3 +253,24 @@ export function clientStatement(docs: IssuedDocument[], today: string) {
     documents: rows,
   };
 }
+
+/**
+ * Ricavi incassati per anno di incasso (principio di cassa), al netto dell'IVA:
+ * ogni rata saldata pesa amount × (lordo − IVA) / lordo; le note di credito sottraggono.
+ * Per un forfettario coincide con l'incassato (bollo e rivalsa INPS addebitati inclusi).
+ */
+export function collectedByYear(docs: IssuedDocument[]): Record<number, number> {
+  const out: Record<number, number> = {};
+  for (const d of docs) {
+    const sign = d.type === "credit_note" ? -1 : 1;
+    const gross = d.amount_gross ?? 0;
+    const ratio = gross ? (gross - (d.amount_vat ?? 0)) / gross : 1;
+    for (const p of d.payments_list ?? []) {
+      if (p.status !== "paid" || !p.paid_date) continue;
+      const y = Number(p.paid_date.slice(0, 4));
+      out[y] = (out[y] ?? 0) + (p.amount ?? 0) * ratio * sign;
+    }
+  }
+  for (const y of Object.keys(out)) out[+y] = round2(out[+y]);
+  return out;
+}
