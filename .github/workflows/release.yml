@@ -33,6 +33,11 @@ jobs:
       # package → Settings → Trusted Publisher → GitHub Actions, workflow release.yml.
       - name: Publish to npm
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$(npm view "fattureincloud-mcp@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            echo "fattureincloud-mcp@$VERSION is already on npm, skipping"
+            exit 0
+          fi
           npm install -g npm@latest
           npm publish --access public
 
