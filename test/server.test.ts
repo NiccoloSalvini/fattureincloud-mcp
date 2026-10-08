@@ -44,7 +44,7 @@ describe("tool catalogue", () => {
       "list_companies", "get_company_info", "lookup", "upload_attachment", "get_einvoice_xml", "duplicate_document", "bulk_duplicate",
       "transform_document", "join_documents", "mark_paid", "send_einvoice", "bulk_send_einvoice", "email_document", "bulk_email",
       "get_document_pdf", "schedule_create", "schedule_run_due", "receivables_report", "revenue_summary", "audit_documents",
-      "client_statement", "api_request", "recover_document",
+      "client_statement", "api_request", "recover_document", "tax_profile_set", "tax_estimate",
     ]) expect(names).toContain(n);
     expect(names.length).toBeGreaterThan(70);
   });
@@ -135,5 +135,17 @@ describe("schedules", () => {
     const saved = await store.get(schedule.id);
     expect(saved.history).toHaveLength(1);
     expect(saved.next_run! > "2026-01-05").toBe(true);
+  });
+});
+
+describe("taxes", () => {
+  it("requires a profile, then estimates from collected invoices", async () => {
+    await expect(call("tax_estimate", { year: 2026 })).rejects.toThrow(/tax_profile_set/);
+    await call("tax_profile_set", { coefficient: 0.78, tax_rate: 0.15, start_year: 2026 });
+    api.docs.get(26).payments_list[0] = { amount: 1202, status: "paid", paid_date: "2026-03-01" };
+    const r = await call("tax_estimate", { year: 2026, projection: "to_date" });
+    expect(r.collected_to_date).toBe(1202);
+    expect(r.year_summary.gross_income).toBeCloseTo(937.56, 2);
+    expect(r.deadlines.at(-1).date).toBe("2027-06-30");
   });
 });

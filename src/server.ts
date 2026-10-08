@@ -8,8 +8,9 @@ import { registerDocumentTools } from "./tools/documents.js";
 import { registerAutomationTools } from "./tools/automation.js";
 import { registerInsightTools } from "./tools/insights.js";
 import { registerAdminTools } from "./tools/admin.js";
+import { registerTaxTools } from "./tools/taxes.js";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 
 /** FIC_TOOLSETS="documents,automation" → only those groups (admin is always on). */
 export function parseToolsets(value: string | undefined): Set<Toolset> {
@@ -38,6 +39,7 @@ export function createServer(client: FicClient, opts: { store?: ScheduleStore; t
   if (enabled.has("documents")) registerDocumentTools(ctx);
   if (enabled.has("automation")) registerAutomationTools(ctx);
   if (enabled.has("reports")) registerInsightTools(ctx);
+  if (enabled.has("taxes")) registerTaxTools(ctx);
   registerPrompts(server);
   return server;
 }
