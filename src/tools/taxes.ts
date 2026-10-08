@@ -1,9 +1,8 @@
 import path from "node:path";
 import { z } from "zod";
-import { collectedByYear } from "../reports.js";
 import { todayISO } from "../schedules.js";
-import { daysBetween } from "../copy.js";
-import { DEFAULTS, loadProfile, saveProfile, taxReport, type TaxProfile } from "../taxes.js";
+import { estimateTaxes } from "../finance.js";
+import { DEFAULTS, loadProfile, saveProfile, type TaxProfile } from "../taxes.js";
 import { type Ctx, tool } from "./define.js";
 
 const yearOverride = z.object({
@@ -35,8 +34,10 @@ const inpsSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }),
 ]);
 
+export const profilePath = (ctx: Ctx) => path.join(ctx.store.dir, "tax-profile.json");
+
 export function registerTaxTools(ctx: Ctx) {
-  const file = path.join(ctx.store.dir, "tax-profile.json");
+  const file = profilePath(ctx);
 
   tool(
     ctx,
@@ -102,26 +103,7 @@ export function registerTaxTools(ctx: Ctx) {
     async ({ year, projection, revenue_estimate }, c) => {
       const profile = await loadProfile(file);
       if (!profile) throw new Error("Profilo fiscale non impostato: usa prima tax_profile_set (coefficiente, aliquota, previdenza).");
-      const today = todayISO();
-      const thisYear = Number(today.slice(0, 4));
-      const y = year ?? thisYear;
-      const from = Math.max(profile.start_year ?? y - 3, y - 3);
-      const docs = [];
-      for (const type of ["invoice", "credit_note"]) {
-        docs.push(...(await c.listAll("/issued_documents", { type, q: `date >= '${from - 1}-01-01' and date <= '${y}-12-31'`, fieldset: "detailed" }, 3000)));
-      }
-      const revenue = collectedByYear(docs);
-      let projected: number | undefined = revenue_estimate;
-      if (projected === undefined && y === thisYear && projection === "linear") {
-        const elapsed = daysBetween(`${y}-01-01`, today) + 1;
-        projected = Math.round(((revenue[y] ?? 0) / elapsed) * 365 * 100) / 100;
-      }
-      return {
-        revenue_by_year: revenue,
-        collected_to_date: revenue[y] ?? 0,
-        revenue_basis: revenue_estimate !== undefined ? "stima fornita" : projected !== undefined ? "proiezione lineare a fine anno" : "incassi effettivi",
-        ...taxReport(profile, revenue, y, { projected_revenue: projected }),
-      };
+      return estimateTaxes(c, profile, year ?? Number(todayISO().slice(0, 4)), { projection, revenue_estimate });
     },
   );
 }

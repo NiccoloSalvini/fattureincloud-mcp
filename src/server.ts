@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { FicClient } from "./client.js";
@@ -9,8 +10,10 @@ import { registerAutomationTools } from "./tools/automation.js";
 import { registerInsightTools } from "./tools/insights.js";
 import { registerAdminTools } from "./tools/admin.js";
 import { registerTaxTools } from "./tools/taxes.js";
+import { registerPlanningTools } from "./tools/planning.js";
+import { registerBankTools } from "./tools/bank.js";
 
-export const VERSION = "0.2.0";
+export const VERSION: string = createRequire(import.meta.url)("../package.json").version;
 
 /** FIC_TOOLSETS="documents,automation" → only those groups (admin is always on). */
 export function parseToolsets(value: string | undefined): Set<Toolset> {
@@ -40,6 +43,8 @@ export function createServer(client: FicClient, opts: { store?: ScheduleStore; t
   if (enabled.has("automation")) registerAutomationTools(ctx);
   if (enabled.has("reports")) registerInsightTools(ctx);
   if (enabled.has("taxes")) registerTaxTools(ctx);
+  if (enabled.has("planning")) registerPlanningTools(ctx);
+  if (enabled.has("bank")) registerBankTools(ctx);
   registerPrompts(server);
   return server;
 }
