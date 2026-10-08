@@ -48,8 +48,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" build/*.mcpb \
-            --title "$GITHUB_REF_NAME" --generate-notes
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" build/*.mcpb --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" build/*.mcpb --title "$GITHUB_REF_NAME" --generate-notes
+          fi
 
       - name: Prepare server.json
         run: |
@@ -68,6 +71,16 @@ jobs:
                 environmentVariables: .packages[0].environmentVariables
               }]' server.json > server.tmp && mv server.tmp server.json
           cat server.json
+
+      # The registry validates the npm version, which can take a few minutes to appear.
+      - name: Wait for the npm version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 30); do
+            [ "$(npm view "fattureincloud-mcp@$VERSION" version 2>/dev/null)" = "$VERSION" ] && exit 0
+            echo "waiting for fattureincloud-mcp@$VERSION on npm ($i/30)"; sleep 20
+          done
+          echo "npm version not visible after 10 minutes"; exit 1
 
       - name: Publish to MCP Registry
         run: |
