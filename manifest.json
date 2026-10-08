@@ -1,0 +1,60 @@
+{
+  "manifest_version": "0.2",
+  "name": "fattureincloud-mcp",
+  "display_name": "Fatture in Cloud",
+  "version": "0.0.0",
+  "description": "Fatture in Cloud da Claude: fatture ricorrenti, duplicazione e invii SdI in blocco, incassi, tasse del forfettario, previsione di cassa.",
+  "long_description": "Gestisci Fatture in Cloud parlando con Claude. Fatture ricorrenti con invio automatico allo SdI, duplicazione completa, operazioni in blocco con anteprima, riconciliazione con l'estratto conto, crediti scaduti, stima di imposta sostitutiva e contributi con le scadenze del 30 giugno e del 30 novembre, previsione di cassa, pacchetto annuale per il commercialista e accesso a tutta l'API v2. Open source, non affiliato a Fatture in Cloud o TeamSystem.",
+  "author": {
+    "name": "Niccolò Salvini",
+    "url": "https://github.com/NiccoloSalvini"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NiccoloSalvini/fattureincloud-mcp"
+  },
+  "homepage": "https://github.com/NiccoloSalvini/fattureincloud-mcp",
+  "support": "https://github.com/NiccoloSalvini/fattureincloud-mcp/issues",
+  "license": "MIT",
+  "keywords": ["fatture in cloud", "fattura elettronica", "sdi", "forfettario", "fatturazione", "italia"],
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"],
+      "env": {
+        "FIC_ACCESS_TOKEN": "${user_config.fic_access_token}",
+        "FIC_COMPANY_ID": "${user_config.fic_company_id}",
+        "FIC_TOOLSETS": "${user_config.fic_toolsets}"
+      }
+    }
+  },
+  "user_config": {
+    "fic_access_token": {
+      "type": "string",
+      "title": "Token personale di Fatture in Cloud",
+      "description": "Impostazioni → App e API → applicazione privata con «Token personale» → genera token.",
+      "sensitive": true,
+      "required": true
+    },
+    "fic_company_id": {
+      "type": "string",
+      "title": "ID azienda (facoltativo)",
+      "description": "Serve solo se il token gestisce più aziende.",
+      "required": false,
+      "default": ""
+    },
+    "fic_toolsets": {
+      "type": "string",
+      "title": "Gruppi di strumenti (facoltativo)",
+      "description": "Vuoto = tutti. Es. documents,automation,reports,taxes,planning,bank",
+      "required": false,
+      "default": ""
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "node": ">=20.0.0" }
+  }
+}

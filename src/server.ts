@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { FicClient } from "./client.js";
@@ -11,7 +12,7 @@ import { registerAdminTools } from "./tools/admin.js";
 import { registerTaxTools } from "./tools/taxes.js";
 import { registerPlanningTools } from "./tools/planning.js";
 
-export const VERSION = "0.2.0";
+export const VERSION: string = createRequire(import.meta.url)("../package.json").version;
 
 /** FIC_TOOLSETS="documents,automation" → only those groups (admin is always on). */
 export function parseToolsets(value: string | undefined): Set<Toolset> {

@@ -1,15 +1,30 @@
 {
   "name": "fattureincloud-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP server per Fatture in Cloud: fatture ricorrenti, duplicazione e invii in blocco, SdI, incassi, report forfettario e tutta l API v2",
+  "mcpName": "io.github.NiccoloSalvini/fattureincloud-mcp",
+  "type": "module",
+  "bin": {
+    "fattureincloud-mcp": "dist/index.js"
+  },
   "main": "dist/server.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "manifest.json"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc",
     "prepare": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "build:mcpb": "node scripts/build-mcpb.mjs"
   },
   "keywords": [
     "mcp",
@@ -23,7 +38,18 @@
   ],
   "author": "Niccolò Salvini",
   "license": "MIT",
-  "type": "module",
+  "homepage": "https://github.com/NiccoloSalvini/fattureincloud-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NiccoloSalvini/fattureincloud-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NiccoloSalvini/fattureincloud-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
     "fflate": "^0.8.3",
@@ -33,20 +59,5 @@
     "@types/node": "^26.6.4",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
-  },
-  "bin": {
-    "fattureincloud-mcp": "dist/index.js"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "engines": {
-    "node": ">=20"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/NiccoloSalvini/fattureincloud-mcp.git"
   }
 }

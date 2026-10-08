@@ -1,0 +1,40 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.NiccoloSalvini/fattureincloud-mcp",
+  "title": "Fatture in Cloud",
+  "description": "Fatture in Cloud: fatture ricorrenti, invii SdI in blocco, incassi, tasse forfettario, cassa",
+  "repository": {
+    "url": "https://github.com/NiccoloSalvini/fattureincloud-mcp",
+    "source": "github"
+  },
+  "version": "0.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "fattureincloud-mcp",
+      "version": "0.0.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "FIC_ACCESS_TOKEN",
+          "description": "Token personale di Fatture in Cloud",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "FIC_COMPANY_ID",
+          "description": "ID azienda, se il token ne gestisce più di una",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "FIC_TOOLSETS",
+          "description": "Gruppi di strumenti da caricare, es. documents,automation,reports",
+          "isRequired": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
