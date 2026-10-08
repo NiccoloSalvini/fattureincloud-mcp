@@ -9,6 +9,8 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     permissions:
       contents: write # GitHub release
       id-token: write # npm provenance + MCP Registry OIDC login
@@ -30,6 +32,7 @@ jobs:
       - run: npm run build
 
       - name: Publish to npm
+        if: env.NPM_TOKEN != ''
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -44,7 +47,9 @@ jobs:
           gh release create "$GITHUB_REF_NAME" build/*.mcpb \
             --title "$GITHUB_REF_NAME" --generate-notes
 
+      # The registry entry points at the npm package, so it needs the npm publish above.
       - name: Prepare server.json
+        if: env.NPM_TOKEN != ''
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           FILE="fattureincloud-mcp-${VERSION}.mcpb"
@@ -63,6 +68,7 @@ jobs:
           cat server.json
 
       - name: Publish to MCP Registry
+        if: env.NPM_TOKEN != ''
         run: |
           curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           ./mcp-publisher login github-oidc

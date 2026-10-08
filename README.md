@@ -8,6 +8,9 @@ Fa quello che l'app non fa:
 - **Duplicazione vera.** Copia una fattura con nuova data, numero successivo, scadenze ricalcolate, bollo e conto di pagamento, cambiando solo le righe che vuoi.
 - **Operazioni in blocco.** Duplicare, inviare allo SdI, mandare per email o segnare come pagate decine di fatture con un comando, con anteprima obbligatoria prima di agire.
 - **Controlli e report.** Crediti scaduti per cliente, fatturato e incassato per mese, distanza dalla **soglia del forfettario** (85.000 €, principio di cassa), **bollo mancante**, fatture elettroniche non inviate o scartate, buchi nella numerazione.
+- **Riconciliazione bancaria.** Carichi l'estratto conto (Intesa, UniCredit, Fineco, BPER, Poste, ING, Revolut, N26, Qonto o qualsiasi CSV/XLSX), oppure colleghi il conto via PSD2, e ogni bonifico viene abbinato alla fattura giusta e registrato come incasso con la sua data.
+- **Previsione di cassa.** Mese per mese: incassi attesi, fatture ricorrenti, scadenze fiscali e spese fisse, con quanto accantonare ogni mese per arrivare coperto a giugno e novembre.
+- **Pacchetto per il commercialista.** Un solo zip con CSV, PDF, XML e riepilogo dell'anno.
 - **Tasse del forfettario.** Imposta sostitutiva e contributi INPS stimati dagli incassi reali: quanto pagare il 30 giugno (saldo e 1° acconto) e il 30 novembre (2° acconto), il totale annuo e la percentuale da accantonare.
 - **Tutta l'API v2.** Documenti emessi e ricevuti, clienti, fornitori, prodotti, corrispettivi, F24, archivio, prima nota, allegati, cestino, impostazioni. Quello che non ha un tool dedicato passa da `api_request`.
 
@@ -23,6 +26,10 @@ Fa quello che l'app non fa:
 - «Ci sono fatture sopra 77,47 € senza bollo?»
 - «Scarica i PDF delle fatture di ottobre in ~/Documenti/fatture.»
 - «Quante tasse pago il 30 giugno e il 30 novembre? Quanto devo accantonare per ogni fattura?»
+- «Ecco l'estratto conto di Intesa (~/Downloads/movimenti.xlsx): segna come pagate le fatture incassate.»
+- «A novembre avrò abbastanza sul conto per l'acconto? Quanto metto da parte al mese?»
+- «Metti le scadenze fiscali nel mio calendario e negli F24 di Fatture in Cloud.»
+- «Prepara il pacchetto 2026 per il commercialista.»
 
 ## Installazione
 
@@ -41,27 +48,29 @@ I token personali non scadono e si revocano dalla stessa pagina ([guida ufficial
 
 ### 2. Client MCP
 
+**Claude Desktop, con un clic.** Scarica `fattureincloud-mcp-x.y.z.mcpb` dall'ultima [release](https://github.com/NiccoloSalvini/fattureincloud-mcp/releases), aprilo con doppio clic e incolla il token quando te lo chiede. Non serve modificare file di configurazione, e il token viene salvato nel portachiavi di sistema.
+
 **Claude Code**
 
 ```bash
-claude mcp add --scope user fattureincloud -e FIC_ACCESS_TOKEN=il-tuo-token -- npx -y github:NiccoloSalvini/fattureincloud-mcp
+claude mcp add --scope user fattureincloud -e FIC_ACCESS_TOKEN=il-tuo-token -- npx -y fattureincloud-mcp
 ```
 
-**Claude Desktop** (`claude_desktop_config.json`), Cursor, Windsurf e simili:
+**Configurazione manuale** (`claude_desktop_config.json`, Cursor, Windsurf e simili):
 
 ```json
 {
   "mcpServers": {
     "fattureincloud": {
       "command": "npx",
-      "args": ["-y", "github:NiccoloSalvini/fattureincloud-mcp"],
+      "args": ["-y", "fattureincloud-mcp"],
       "env": { "FIC_ACCESS_TOKEN": "il-tuo-token" }
     }
   }
 }
 ```
 
-Altri esempi in [`examples/`](examples/).
+Altri esempi in [`examples/`](examples/). Finché il pacchetto non è su npm, al posto di `fattureincloud-mcp` usa `github:NiccoloSalvini/fattureincloud-mcp`.
 
 ### Variabili
 
@@ -69,7 +78,7 @@ Altri esempi in [`examples/`](examples/).
 | --- | --- |
 | `FIC_ACCESS_TOKEN` | obbligatoria |
 | `FIC_COMPANY_ID` | facoltativa: se il token vede una sola azienda viene scelta da sola, altrimenti ogni tool accetta `company_id` |
-| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports` (vedi sotto) |
+| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 92: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
 | `FIC_MCP_DATA_DIR` | dove salvare le ricorrenze, default `~/.config/fattureincloud-mcp` |
 
 Le variabili possono stare anche in `~/.config/fattureincloud-mcp/.env`, nella forma `FIC_ACCESS_TOKEN=...`. È il modo consigliato per il job pianificato.
@@ -87,7 +96,7 @@ Fatture in Cloud non ha la pianificazione, quindi le ricorrenze vivono sul tuo c
 2. Installa il job (una volta sola):
 
    ```bash
-   npm i -g github:NiccoloSalvini/fattureincloud-mcp
+   npm i -g fattureincloud-mcp
    ```
 
    ```bash
@@ -115,7 +124,7 @@ fattureincloud-mcp run-due --dry-run
 
 ## Strumenti
 
-82 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
+92 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
 
 **documents**: documenti emessi
 - `list_/get_/create_/update_/delete_issued_document(s)`
@@ -144,6 +153,16 @@ fattureincloud-mcp run-due --dry-run
 **taxes**
 - `tax_profile_set`, `tax_profile_get`: coefficiente, aliquota, previdenza, versamenti reali
 - `tax_estimate`: scadenze del 30 giugno e del 30 novembre, totale annuo, quota da accantonare
+
+**planning**
+- `cashflow_forecast`: previsione di cassa e accantonamento mensile
+- `tax_deadlines_export`: scadenze fiscali in `.ics` e negli F24 di Fatture in Cloud
+- `accountant_package`: zip annuale per il commercialista
+
+**bank**
+- `bank_reconcile`: abbina gli accrediti alle fatture e registra gli incassi
+- `bank_parse_statement`, `bank_formats`
+- `bank_link_start`, `bank_link_finish`, `bank_accounts`, `bank_list_banks`: collegamento PSD2 via Enable Banking
 
 **registry**: CRUD su `clients`, `suppliers`, `products`
 
@@ -183,6 +202,65 @@ Per l'anno in corso gli incassi vengono proiettati a fine anno, oppure usi solo 
 
 È una stima per pianificare la liquidità, non un calcolo da dichiarazione: aliquote e massimali cambiano ogni anno (i default sono quelli del 2025 e si possono modificare nel profilo), e prima di pagare conviene il controllo del commercialista.
 
+## Banca: riconciliazione degli incassi
+
+`bank_reconcile` prende i movimenti, cerca per ogni accredito la fattura aperta corrispondente e la segna come pagata con la **data dell'accredito**. Per il forfettario quella data è quella che conta, perché le tasse si calcolano per cassa.
+
+**Abbinamento.** Per ogni accredito il punteggio considera:
+
+| Criterio | Punti |
+| --- | --- |
+| Importo uguale alla rata o al residuo della fattura | +50 |
+| Importo inferiore fino a 2 € (bollo o commissioni non pagati) | +30 |
+| Numero di fattura nella causale (`FT 26`, `fattura n. 26`, `26/2026`) | +30 |
+| P.IVA o codice fiscale del cliente nella causale | +30 |
+| Nome del cliente nella causale | fino a +25 |
+| Pagamento datato prima della fattura | −40 |
+
+La confidenza è *alta* da 75 punti, *media* da 60, *bassa* sotto. Ogni accredito va al massimo a una fattura. Se due fatture hanno lo stesso punteggio, l'abbinamento scende a *medio* e viene segnalato come ambiguo. Si parte sempre in anteprima: con `dry_run: false` vengono registrati solo gli abbinamenti con confidenza almeno `min_confidence` (di default `high`). Rilanciarlo sullo stesso file non registra due volte lo stesso incasso.
+
+### Da file (qualsiasi banca)
+
+Scarica la lista movimenti dall'home banking e passa il percorso del file. Formati riconosciuti in automatico (`bank_formats`):
+
+| Banca | File |
+| --- | --- |
+| Intesa Sanpaolo, Isybank | XLSX «Lista movimenti», solo righe contabilizzate; CSV accrediti/addebiti |
+| UniCredit | CSV |
+| Fineco | XLSX e CSV |
+| BPER | XLS «Movimenti Conto» |
+| Poste Italiane / BancoPosta | XLSX |
+| ING Italia | CSV |
+| Revolut, N26, Qonto | CSV |
+| Altre | qualsiasi CSV/XLSX con data, importo (o entrate e uscite) e descrizione: colonne riconosciute da sole o indicate con `mapping` |
+
+I formati vengono dagli export reali usati da altri progetti open source ([ynab-transformer](https://github.com/magobaol/ynab-transformer), [BananaAccounting](https://github.com/BananaAccounting/Italia), [bankr.isp](https://github.com/bankrr/bankr.isp)). Se la tua banca esporta in un formato diverso, apri una issue con le intestazioni delle colonne.
+
+### Collegamento diretto (PSD2, facoltativo)
+
+Le banche italiane, Intesa compresa, non danno l'API PSD2 ai privati: è riservata agli intermediari autorizzati. Si passa da **[Enable Banking](https://enablebanking.com)**, che offre una modalità gratuita per uso personale e non commerciale, con i tuoi conti. Copre Intesa Sanpaolo, UniCredit, BPER, Banco BPM, Poste, Fineco, ING, Mediolanum, Crédit Agricole, MPS e BCC.
+
+1. Registrati su [enablebanking.com/cp](https://enablebanking.com/cp) e crea un'applicazione di **produzione**. Come redirect URL metti `https://localhost:8765/callback`: non deve esistere davvero.
+2. Scarica la chiave privata `.pem` generata e attiva l'app con «Activate by linking accounts», collegando il tuo conto. L'app passa in modalità *restricted* e vede solo i tuoi conti.
+3. In `~/.config/fattureincloud-mcp/.env`:
+
+   ```
+   ENABLE_BANKING_APP_ID=...
+   ENABLE_BANKING_KEY_PATH=~/.config/fattureincloud-mcp/enablebanking.pem
+   ENABLE_BANKING_REDIRECT_URL=https://localhost:8765/callback
+   ```
+
+4. Chiedi a Claude «collega il mio conto Intesa» (`bank_link_start`). Apri il link, autorizza nell'app della banca e incolla l'indirizzo della pagina finale, anche se il browser dà errore (`bank_link_finish`). Il consenso dura fino a 180 giorni, poi va rinnovato. Molte banche ammettono un solo consenso attivo per volta.
+5. Da lì basta `bank_reconcile` senza file: legge gli ultimi 90 giorni dal conto collegato.
+
+Le sessioni sono salvate in `bank-sessions.json`, leggibile solo dal tuo utente. La chiave resta sul tuo computer.
+
+## Pianificazione
+
+- **`cashflow_forecast`**: entrate e uscite previste mese per mese per 12 mesi. Conta le rate da incassare (le scadute nel mese corrente), le fatture ricorrenti future con il loro ritardo di pagamento tipico, le scadenze fiscali stimate e le spese fisse che indichi. Con `opening_balance` ottieni il saldo previsto e l'avviso sui mesi in rosso. Calcola anche l'**accantonamento mensile** minimo per coprire tutte le scadenze fiscali in tempo; con `tax_fund` tiene conto di quanto hai già da parte.
+- **`tax_deadlines_export`**: porta le scadenze fiscali stimate in un file `.ics`, con promemoria 7 giorni e 1 giorno prima, da importare in Calendario, Google o Outlook. Le crea anche come F24 da pagare nello scadenziario di Fatture in Cloud. Rilanciato, aggiorna gli importi invece di duplicare e non tocca gli F24 già pagati.
+- **`accountant_package`**: `commercialista-AAAA.zip` con `fatture.csv`, `incassi.csv`, `crediti_aperti.csv` e `spese.csv` (separatore `;` e virgola decimale, si aprono direttamente in Excel), PDF di fatture e note di credito, XML FatturaPA e `riepilogo.md` con ricavi, soglia del forfettario, stima delle tasse e controlli.
+
 ## Server HTTP
 
 Per un'installazione condivisa (team, server, n8n…):
@@ -221,7 +299,22 @@ Struttura:
 - `src/schedules.ts`, `src/runner.ts`: ricorrenze
 - `src/reports.ts`: crediti, ricavi, controlli (funzioni pure)
 - `src/taxes.ts`: modello di imposta e contributi del forfettario
+- `src/cashflow.ts`, `src/ics.ts`, `src/accountant.ts`: pianificazione
+- `src/bank/`: parser degli estratti conto, abbinamento, client Enable Banking
 - `src/tools/`: definizione dei tool; i CRUD sono generati da una tabella in `crud.ts`
+
+### Rilasci
+
+Aggiorna `version` in `package.json`, poi crea e invia il tag:
+
+```bash
+git tag v0.3.0 && git push origin v0.3.0
+```
+
+La GitHub Action `release.yml` esegue i test e poi:
+- pubblica su npm con provenance (serve il secret `NPM_TOKEN`);
+- crea la release con l'estensione `.mcpb` (generabile anche in locale con `npm run build:mcpb`);
+- pubblica la scheda sul [registro MCP](https://registry.modelcontextprotocol.io), autenticandosi con OIDC.
 
 Le PR sono benvenute. Il progetto non è affiliato a Fatture in Cloud né a TeamSystem.
 

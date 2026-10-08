@@ -10,6 +10,8 @@ import { FicClient } from "../src/client.js";
 import { ScheduleStore } from "../src/schedules.js";
 import { createServer, parseToolsets } from "../src/server.js";
 import { fakeApi } from "./fake-api.js";
+import { writeFile } from "node:fs/promises";
+import { intesaXlsx } from "./fixtures.js";
 
 let api: ReturnType<typeof fakeApi>;
 let mcp: Client;
@@ -46,7 +48,7 @@ describe("tool catalogue", () => {
       "list_companies", "get_company_info", "lookup", "upload_attachment", "get_einvoice_xml", "duplicate_document", "bulk_duplicate",
       "transform_document", "join_documents", "mark_paid", "send_einvoice", "bulk_send_einvoice", "email_document", "bulk_email",
       "get_document_pdf", "schedule_create", "schedule_run_due", "receivables_report", "revenue_summary", "audit_documents",
-      "client_statement", "api_request", "recover_document", "tax_profile_set", "tax_estimate", "cashflow_forecast", "tax_deadlines_export", "accountant_package",
+      "client_statement", "api_request", "recover_document", "tax_profile_set", "tax_estimate", "cashflow_forecast", "tax_deadlines_export", "accountant_package", "bank_reconcile", "bank_link_start",
     ]) expect(names).toContain(n);
     expect(names.length).toBeGreaterThan(70);
   });
@@ -195,5 +197,29 @@ describe("planning", () => {
     );
     expect(strFromU8(files["commercialista-2026/fatture.csv"])).toContain("IT01234567890");
     expect(strFromU8(files["commercialista-2026/riepilogo.md"])).toContain("Stima imposta e contributi");
+  });
+});
+
+describe("bank", () => {
+  it("bank_reconcile proposes in dry run, then marks the installment paid on the transfer date", async () => {
+    const file = path.join(store.dir, "lista.xlsx");
+    await writeFile(file, intesaXlsx());
+    const preview = await call("bank_reconcile", { file_path: file });
+    expect(preview.source).toMatch(/Intesa/);
+    expect(preview.matches).toHaveLength(1);
+    expect(preview.matches[0]).toMatchObject({ confidence: "high", fattura: { id: 26 }, will_apply: true });
+    expect(api.docs.get(26).payments_list[0].status).toBe("not_paid");
+
+    const done = await call("bank_reconcile", { file_path: file, dry_run: false });
+    expect(done.applied[0]).toMatchObject({ document_id: 26, paid_date: "2026-10-05" });
+    expect(api.docs.get(26).payments_list[0]).toMatchObject({ status: "paid", paid_date: "2026-10-05", payment_account: { id: 3 } });
+
+    const again = await call("bank_reconcile", { file_path: file });
+    expect(again.matches).toHaveLength(0);
+  });
+
+  it("bank_link_start explains missing configuration", async () => {
+    delete process.env.ENABLE_BANKING_APP_ID;
+    await expect(call("bank_link_start", {})).rejects.toThrow(/ENABLE_BANKING_APP_ID/);
   });
 });

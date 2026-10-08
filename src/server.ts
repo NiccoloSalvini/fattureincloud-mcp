@@ -11,6 +11,7 @@ import { registerInsightTools } from "./tools/insights.js";
 import { registerAdminTools } from "./tools/admin.js";
 import { registerTaxTools } from "./tools/taxes.js";
 import { registerPlanningTools } from "./tools/planning.js";
+import { registerBankTools } from "./tools/bank.js";
 
 export const VERSION: string = createRequire(import.meta.url)("../package.json").version;
 
@@ -43,6 +44,7 @@ export function createServer(client: FicClient, opts: { store?: ScheduleStore; t
   if (enabled.has("reports")) registerInsightTools(ctx);
   if (enabled.has("taxes")) registerTaxTools(ctx);
   if (enabled.has("planning")) registerPlanningTools(ctx);
+  if (enabled.has("bank")) registerBankTools(ctx);
   registerPrompts(server);
   return server;
 }

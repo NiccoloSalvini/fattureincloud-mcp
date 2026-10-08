@@ -144,3 +144,29 @@ export async function joinDocuments(
   if (opts.dry_run) return { dry_run: true, document: data };
   return { dry_run: false, document: await client.createDocument(data, { ...res.options, fix_payments: true }) };
 }
+
+/** Marks specific installments as paid on a given date (bank reconciliation). */
+export async function markInstallmentsPaid(
+  client: FicClient,
+  id: number,
+  indexes: number[],
+  opts: { paid_date: string; payment_account_id?: number },
+) {
+  const doc = await client.getDocument(id);
+  const payments = [...(doc.payments_list ?? [])];
+  let account = opts.payment_account_id;
+  for (const i of indexes) {
+    const p = payments[i];
+    if (!p) throw new Error(`Il documento ${id} non ha la rata ${i}`);
+    if (p.status === "paid") continue;
+    let acc = account ?? p.payment_account?.id;
+    if (!acc) {
+      const accounts = (await client.get("/info/payment_accounts")).data ?? [];
+      if (!accounts.length) throw new Error("Nessun conto di saldo configurato: passa payment_account_id");
+      acc = account = accounts[0].id as number;
+    }
+    payments[i] = { ...p, status: "paid", paid_date: opts.paid_date, payment_account: { id: acc } };
+  }
+  await client.modifyDocument(id, { payments_list: payments });
+  return { document_id: id, installments: indexes, paid_date: opts.paid_date };
+}
