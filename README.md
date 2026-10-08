@@ -312,9 +312,9 @@ git tag v0.3.0 && git push origin v0.3.0
 ```
 
 La GitHub Action `release.yml` esegue i test e poi:
-- pubblica su npm con provenance (serve il secret `NPM_TOKEN`);
+- pubblica su npm con [trusted publishing](https://docs.npmjs.com/trusted-publishers), via OIDC e senza token, con provenance automatica;
 - crea la release con l'estensione `.mcpb` (generabile anche in locale con `npm run build:mcpb`);
-- pubblica la scheda sul [registro MCP](https://registry.modelcontextprotocol.io), autenticandosi con OIDC.
+- pubblica la scheda sul [registro MCP](https://registry.modelcontextprotocol.io).
 
 Le PR sono benvenute. Il progetto non è affiliato a Fatture in Cloud né a TeamSystem.
 
