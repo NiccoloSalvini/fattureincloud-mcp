@@ -1,0 +1,51 @@
+{
+  "name": "fattureincloud-mcp",
+  "version": "0.1.0",
+  "description": "MCP server per Fatture in Cloud: fatture ricorrenti, duplicazione e invii in blocco, SdI, incassi, report forfettario e tutta l API v2",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "fatture-in-cloud",
+    "fattureincloud",
+    "fattura-elettronica",
+    "sdi",
+    "claude",
+    "forfettario"
+  ],
+  "author": "Niccolò Salvini",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "bin": {
+    "fattureincloud-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NiccoloSalvini/fattureincloud-mcp.git"
+  }
+}

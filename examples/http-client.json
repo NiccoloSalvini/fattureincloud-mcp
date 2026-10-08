@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "fattureincloud": {
+      "type": "http",
+      "url": "https://fatture.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer a/eyJ...",
+        "X-FIC-Company": "123456"
+      }
+    }
+  }
+}

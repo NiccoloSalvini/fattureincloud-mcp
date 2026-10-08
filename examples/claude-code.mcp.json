@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "fattureincloud": {
+      "command": "npx",
+      "args": ["-y", "github:NiccoloSalvini/fattureincloud-mcp"],
+      "env": {
+        "FIC_ACCESS_TOKEN": "${FIC_ACCESS_TOKEN}",
+        "FIC_TOOLSETS": "documents,automation,reports"
+      }
+    }
+  }
+}
