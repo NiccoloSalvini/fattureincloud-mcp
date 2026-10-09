@@ -8,7 +8,7 @@ import path from "node:path";
 import { zipSync, strToU8 } from "fflate";
 import type { FicClient, IssuedDocument, Json } from "./client.js";
 import { fetchIssued, estimateTaxes } from "./finance.js";
-import { audit, receivables, revenueSummary } from "./reports.js";
+import { audit, receivables, revenueSummary, stampOf } from "./reports.js";
 import { todayISO } from "./schedules.js";
 import type { TaxProfile } from "./taxes.js";
 
@@ -40,7 +40,7 @@ export function invoicesCsv(docs: IssuedDocument[]): string {
         d.entity?.tax_code,
         eur((d.amount_net ?? 0) * sign(d)),
         eur((d.amount_vat ?? 0) * sign(d)),
-        eur(d.stamp_duty ?? 0),
+        eur(stampOf(d)),
         eur((d.amount_gross ?? 0) * sign(d)),
         d.e_invoice ? "sì" : "no",
         d.ei_status ?? "",
@@ -89,8 +89,8 @@ function summaryMarkdown(year: number, rev: ReturnType<typeof revenueSummary>, a
     "",
     "## Ricavi",
     "",
-    `- Fatturato (competenza, imponibile): ${f(rev.issued.net)}`,
-    `- Incassato (cassa, al netto IVA): ${f(rev.collected.net_estimate)}`,
+    `- Fatturato (competenza, ricavi senza IVA, rivalsa e bolli addebitati inclusi): ${f(rev.issued.revenue)}`,
+    `- Incassato (cassa, stessa base): ${f(rev.collected.revenue)}`,
     `- Bolli addebitati: ${f(rev.issued.stamp_duty)}`,
     `- Soglia forfettario: ${rev.forfettario.used_pct}% di ${f(rev.forfettario.limit)}${rev.forfettario.warning ? ` — ${rev.forfettario.warning}` : ""}`,
     "",

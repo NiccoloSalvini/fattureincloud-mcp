@@ -28,11 +28,11 @@ describe("receivables", () => {
 describe("revenueSummary", () => {
   it("separates issued and collected, nets credit notes", () => {
     const r = revenueSummary(docs, 2026, "2026-10-08");
-    expect(r.issued.net).toBe(1450);
+    expect(r.issued.revenue).toBe(1452);
     expect(r.collected.gross).toBe(902);
-    expect(r.collected.net_estimate).toBe(900);
-    expect(r.by_month[1].collected_net).toBe(1000);
-    expect(r.forfettario.remaining).toBe(85000 - 900);
+    expect(r.collected.revenue).toBe(902);
+    expect(r.by_month[1].collected).toBe(1002);
+    expect(r.forfettario.remaining).toBe(85000 - 902);
     expect(r.forfettario.warning).toBeNull();
   });
 
@@ -48,6 +48,7 @@ describe("checks", () => {
     expect(missingStampDuty(inv({ amount_net: 500 }))).toBe(true);
     expect(missingStampDuty(inv({ amount_net: 500, stamp_duty: 2 }))).toBe(false);
     expect(missingStampDuty(inv({ amount_net: 50 }))).toBe(false);
+    expect(missingStampDuty(inv({ amount_net: 3122.08, items_list: [{ name: "Marca da bollo", net_price: 2 }] }))).toBe(false);
     expect(missingStampDuty(inv({ amount_net: 500, amount_vat: 110 }))).toBe(false);
   });
 

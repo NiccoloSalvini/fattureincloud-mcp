@@ -101,69 +101,71 @@ export function receivables(docs: IssuedDocument[], today: string) {
  * Revenue for a calendar year.
  * - `issued`: competenza, by document date (credit notes subtract).
  * - `collected`: cassa, by paid_date of each payment — the basis of the
- *   forfettario threshold. Net share estimated as amount × net/gross.
+ *   forfettario threshold.
+ * Revenue ("ricavi") is the document total without VAT: it includes rivalsa INPS
+ * and stamp duty charged to the client, which for a forfettario are revenue.
  */
 export function revenueSummary(docs: IssuedDocument[], year: number, today: string, limit = FORFETTARIO_LIMIT) {
   const y = String(year);
-  const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, issued_net: 0, collected_net: 0 }));
-  const byClient = new Map<string, { client: string; issued_net: number; collected_net: number }>();
-  let issuedNet = 0;
+  const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, issued: 0, collected: 0 }));
+  const byClient = new Map<string, { client: string; issued: number; collected: number }>();
+  let issuedRevenue = 0;
   let issuedGross = 0;
-  let collectedNet = 0;
+  let collectedRevenue = 0;
   let collectedGross = 0;
   let stampDuty = 0;
 
   for (const d of docs) {
     const sign = d.type === "credit_note" ? -1 : 1;
-    const net = (d.amount_net ?? 0) * sign;
     const gross = (d.amount_gross ?? 0) * sign;
+    const revenue = gross - (d.amount_vat ?? 0) * sign;
     const client = d.entity?.name ?? "?";
-    const c = byClient.get(client) ?? { client, issued_net: 0, collected_net: 0 };
+    const c = byClient.get(client) ?? { client, issued: 0, collected: 0 };
     if (d.date?.startsWith(y)) {
-      issuedNet += net;
+      issuedRevenue += revenue;
       issuedGross += gross;
-      stampDuty += (d.stamp_duty ?? 0) * sign;
-      months[Number(d.date.slice(5, 7)) - 1].issued_net += net;
-      c.issued_net += net;
+      stampDuty += stampOf(d) * sign;
+      months[Number(d.date.slice(5, 7)) - 1].issued += revenue;
+      c.issued += revenue;
     }
-    const ratio = d.amount_gross ? (d.amount_net ?? 0) / d.amount_gross : 1;
+    const ratio = d.amount_gross ? (d.amount_gross - (d.amount_vat ?? 0)) / d.amount_gross : 1;
     for (const p of d.payments_list ?? []) {
       if (p.status !== "paid" || !p.paid_date?.startsWith(y)) continue;
       const amt = (p.amount ?? 0) * sign;
       collectedGross += amt;
-      collectedNet += amt * ratio;
-      months[Number(p.paid_date.slice(5, 7)) - 1].collected_net += amt * ratio;
-      c.collected_net += amt * ratio;
+      collectedRevenue += amt * ratio;
+      months[Number(p.paid_date.slice(5, 7)) - 1].collected += amt * ratio;
+      c.collected += amt * ratio;
     }
     byClient.set(client, c);
   }
 
   const dayOfYear = today.startsWith(y) ? daysBetween(`${y}-01-01`, today) + 1 : 365;
-  const projection = dayOfYear < 365 ? (collectedNet / dayOfYear) * 365 : collectedNet;
+  const projection = dayOfYear < 365 ? (collectedRevenue / dayOfYear) * 365 : collectedRevenue;
   return {
     year,
-    issued: { net: round2(issuedNet), gross: round2(issuedGross), stamp_duty: round2(stampDuty) },
-    collected: { net_estimate: round2(collectedNet), gross: round2(collectedGross) },
+    issued: { revenue: round2(issuedRevenue), gross: round2(issuedGross), stamp_duty: round2(stampDuty) },
+    collected: { revenue: round2(collectedRevenue), gross: round2(collectedGross) },
     forfettario: {
       limit,
       hard_limit: FORFETTARIO_HARD_LIMIT,
-      used_pct: round2((collectedNet / limit) * 100),
-      remaining: round2(limit - collectedNet),
+      used_pct: round2((collectedRevenue / limit) * 100),
+      remaining: round2(limit - collectedRevenue),
       projected_year_end: round2(projection),
       warning:
-        collectedNet > FORFETTARIO_HARD_LIMIT
+        collectedRevenue > FORFETTARIO_HARD_LIMIT
           ? "Superati i 100.000 €: uscita immediata dal forfettario, IVA dovuta dall'operazione che ha superato la soglia."
-          : collectedNet > limit
+          : collectedRevenue > limit
             ? "Superati gli 85.000 €: dal prossimo anno regime ordinario."
             : projection > limit
               ? "Al ritmo attuale supererai gli 85.000 € entro fine anno."
               : null,
     },
-    by_month: months.map((m) => ({ ...m, issued_net: round2(m.issued_net), collected_net: round2(m.collected_net) })),
+    by_month: months.map((m) => ({ ...m, issued: round2(m.issued), collected: round2(m.collected) })),
     by_client: [...byClient.values()]
-      .map((c) => ({ ...c, issued_net: round2(c.issued_net), collected_net: round2(c.collected_net) }))
-      .filter((c) => c.issued_net || c.collected_net)
-      .sort((a, b) => b.issued_net - a.issued_net),
+      .map((c) => ({ ...c, issued: round2(c.issued), collected: round2(c.collected) }))
+      .filter((c) => c.issued || c.collected)
+      .sort((a, b) => b.issued - a.issued),
   };
 }
 
@@ -178,9 +180,16 @@ export function hasNoVat(d: IssuedDocument): boolean {
   return (d.items_list ?? []).every((it) => !it.vat?.value);
 }
 
+/** Stamp duty on a document: the dedicated field, or a "marca da bollo" line item. */
+export function stampOf(d: IssuedDocument): number {
+  if (d.stamp_duty) return d.stamp_duty;
+  const line = (d.items_list ?? []).find((it) => /bollo/i.test(`${it.name ?? ""} ${it.description ?? ""}`));
+  return line ? (line.net_price ?? line.gross_price ?? 0) * (line.qty ?? 1) : 0;
+}
+
 export function missingStampDuty(d: IssuedDocument): boolean {
   if (d.type === "credit_note" || d.type === "quote" || d.type === "order") return false;
-  return hasNoVat(d) && (d.amount_net ?? 0) > STAMP_DUTY_THRESHOLD && !d.stamp_duty;
+  return hasNoVat(d) && (d.amount_net ?? 0) > STAMP_DUTY_THRESHOLD && !stampOf(d);
 }
 
 export function numberingIssues(docs: IssuedDocument[]) {

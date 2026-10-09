@@ -78,7 +78,8 @@ Altri esempi in [`examples/`](examples/). Finché il pacchetto non è su npm, al
 | --- | --- |
 | `FIC_ACCESS_TOKEN` | obbligatoria |
 | `FIC_COMPANY_ID` | facoltativa: se il token vede una sola azienda viene scelta da sola, altrimenti ogni tool accetta `company_id` |
-| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 92: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
+| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 93: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
+| `FIC_QUOTA_RESERVE` | facoltativa: richieste orarie da lasciare libere (default 25). L'API concede 1.000 richieste all'ora e 40.000 al mese, condivise tra le app private; il server legge i contatori a ogni risposta e si ferma prima di esaurirli. `api_quota` mostra quante ne restano |
 | `FIC_MCP_DATA_DIR` | dove salvare le ricorrenze, default `~/.config/fattureincloud-mcp` |
 
 Le variabili possono stare anche in `~/.config/fattureincloud-mcp/.env`, nella forma `FIC_ACCESS_TOKEN=...`. È il modo consigliato per il job pianificato.
@@ -124,7 +125,7 @@ fattureincloud-mcp run-due --dry-run
 
 ## Strumenti
 
-92 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
+93 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
 
 **documents**: documenti emessi
 - `list_/get_/create_/update_/delete_issued_document(s)`
@@ -172,6 +173,7 @@ fattureincloud-mcp run-due --dry-run
 
 **admin**
 - `list_companies`, `get_company_info` (anche uso del piano)
+- `api_quota`: richieste API rimaste nell'ora e nel mese
 - `lookup`: aliquote IVA, metodi di pagamento, conti, centri di costo e ricavo, categorie, modelli, valute, paesi…
 - `list_sent_emails`
 - `api_request`: qualsiasi altro endpoint dell'[API v2](https://developers.fattureincloud.it/api-reference/)
@@ -290,6 +292,8 @@ npm test
 ```bash
 npm run build
 ```
+
+`node scripts/smoke.mjs` prova il server su un account reale con soli strumenti in lettura (token in `~/.config/fattureincloud-mcp/.env`); `node scripts/smoke.mjs <tool> '<json>'` chiama un singolo strumento.
 
 I test girano su un'API Fatture in Cloud simulata (`test/fake-api.ts`) con un vero client MCP collegato in memoria, senza toccare il tuo account. Per provare con un account reale, usa un'azienda di prova e `dry_run`.
 
