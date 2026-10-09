@@ -55,6 +55,8 @@ export interface YearOverride {
   tax_advances_paid?: number;
   /** Acconti contributivi versati per l'anno. */
   contribution_advances_paid?: number;
+  /** INPS rate of that year, e.g. 0.24 in a year with other pension coverage (dottorato, lavoro dipendente). */
+  inps_rate?: number;
 }
 
 /** A payment already arranged (e.g. an installment plan of the June F24). */
@@ -97,8 +99,8 @@ export interface YearCalc {
   tax_balance: number;
 }
 
-function contributionsDue(p: TaxProfile, grossIncome: number): { fixed: number; variable: number } {
-  const inps = p.inps;
+function contributionsDue(p: TaxProfile, grossIncome: number, yearRate?: number): { fixed: number; variable: number } {
+  const inps = yearRate !== undefined && (p.inps.type === "gestione_separata" || p.inps.type === "cassa") ? { ...p.inps, rate: yearRate } : p.inps;
   switch (inps.type) {
     case "gestione_separata":
       return {
@@ -145,7 +147,7 @@ export function computeYears(p: TaxProfile, revenueByYear: Record<number, number
     const prev = out.get(y - 1);
     const revenue = active ? (ov.revenue ?? revenueByYear[y] ?? 0) : 0;
     const gross = revenue * p.coefficient;
-    const { fixed, variable } = contributionsDue(p, gross);
+    const { fixed, variable } = contributionsDue(p, gross, ov.inps_rate);
 
     const cAdv = (() => {
       if (ov.contribution_advances_paid !== undefined) return [ov.contribution_advances_paid / 2, ov.contribution_advances_paid / 2] as [number, number];

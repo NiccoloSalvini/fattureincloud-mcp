@@ -10,6 +10,7 @@ const yearOverride = z.object({
   contributions_paid: z.number().optional().describe("Contributi previdenziali effettivamente versati nell'anno"),
   tax_advances_paid: z.number().optional().describe("Acconti di imposta sostitutiva versati per l'anno"),
   contribution_advances_paid: z.number().optional().describe("Acconti contributivi versati per l'anno"),
+  inps_rate: z.number().optional().describe("Aliquota INPS di quell'anno, es. 0.24 se avevi un'altra copertura (dottorato, lavoro dipendente)"),
 });
 
 const inpsSchema = z.discriminatedUnion("type", [
@@ -89,7 +90,13 @@ export function registerTaxTools(ctx: Ctx) {
         inps: { type: "gestione_separata" },
         ...current,
         ...Object.fromEntries(Object.entries(a).filter(([k, v]) => v !== undefined && k !== "overrides")),
-        overrides: { ...current?.overrides, ...a.overrides },
+        // per-year values are merged, so updating one field keeps the others
+        overrides: Object.fromEntries(
+          [...new Set([...Object.keys(current?.overrides ?? {}), ...Object.keys(a.overrides ?? {})])].map((y) => [
+            y,
+            { ...current?.overrides?.[y], ...a.overrides?.[y] },
+          ]),
+        ),
       } as TaxProfile;
       await saveProfile(merged, file);
       return { saved: file, profile: merged };
