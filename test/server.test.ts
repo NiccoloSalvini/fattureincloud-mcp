@@ -170,6 +170,12 @@ describe("planning", () => {
     expect(schedule.id).toBeTruthy();
   });
 
+  it("planned payments (rateizzazione) enter the forecast", async () => {
+    await call("tax_profile_set", { planned_payments: [{ date: "2099-01-16", amount: 1030.5, label: "Rata 6/6 rateizzazione" }] });
+    const r = await call("tax_deadlines_export", {});
+    expect(r.deadlines.at(-1)).toMatchObject({ date: "2099-01-16", total: 1030.5, planned: true });
+  });
+
   it("tax_deadlines_export writes an ics and creates F24 once", async () => {
     const dir = store.dir;
     const r = await call("tax_deadlines_export", { ics_path: dir, create_f24: true, dry_run: false });

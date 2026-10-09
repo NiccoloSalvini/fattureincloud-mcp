@@ -59,13 +59,18 @@ export function registerTaxTools(ctx: Ctx) {
     {
       description:
         "Imposta il profilo fiscale del forfettario: coefficiente di redditività (78% professionisti, 67% altre attività, 40% commercio, " +
-        "86% costruzioni, 62% intermediari), aliquota (15%, o 5% per i primi 5 anni), previdenza (gestione separata, artigiani/commercianti, cassa) " +
-        "e importi reali già versati per anno. I campi non passati restano invariati.",
+        "86% costruzioni, 62% intermediari, secondo il codice ATECO: es. 62.x consulenza informatica = 67%, 70-75 e 85 = 78%), aliquota (15%, o 5% per i primi 5 anni), " +
+        "previdenza (gestione separata 26,07%, o 24% se hai già un'altra copertura; artigiani/commercianti; cassa), importi reali già versati per anno " +
+        "e pagamenti pianificati (rateizzazioni). I campi non passati restano invariati.",
       input: {
         coefficient: z.number().gt(0).lte(1).optional().describe("Es. 0.78"),
         tax_rate: z.number().min(0).max(0.5).optional().describe("0.15 o 0.05"),
         start_year: z.number().int().optional().describe("Anno di apertura della partita IVA"),
         inps: inpsSchema.optional(),
+        planned_payments: z
+          .array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number(), label: z.string() }))
+          .optional()
+          .describe("Pagamenti già fissati, es. le rate di una rateizzazione: entrano in previsione di cassa, calendario e F24. Sostituisce l'elenco precedente"),
         overrides: z.record(z.string().regex(/^\d{4}$/), yearOverride).optional().describe("Per anno, es. { \"2025\": { contributions_paid: 3200 } }"),
       },
     },

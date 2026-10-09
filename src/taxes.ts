@@ -57,6 +57,13 @@ export interface YearOverride {
   contribution_advances_paid?: number;
 }
 
+/** A payment already arranged (e.g. an installment plan of the June F24). */
+export interface PlannedPayment {
+  date: string;
+  amount: number;
+  label: string;
+}
+
 export interface TaxProfile {
   /** Coefficiente di redditività dell'ATECO, es. 0.78 per i professionisti. */
   coefficient: number;
@@ -66,6 +73,8 @@ export interface TaxProfile {
   start_year?: number;
   inps: InpsProfile;
   overrides?: Record<string, YearOverride>;
+  /** Known future payments (rateizzazione, F24 già fissati), added to the modelled deadlines. */
+  planned_payments?: PlannedPayment[];
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;

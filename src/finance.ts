@@ -65,6 +65,13 @@ export async function upcomingTaxDeadlines(
   const projected = opts.revenue_estimate ?? projectYear(cur.collected_to_date, y, today);
   const revenues = { ...cur.revenue_by_year, [y]: projected, [y + 1]: projected };
   const next = taxReport(profile, revenues, y + 1);
-  const deadlines = [...cur.deadlines.filter((d) => d.date.startsWith(String(y))), ...next.deadlines].filter((d) => d.date >= today);
+  let deadlines = [...cur.deadlines.filter((d) => d.date.startsWith(String(y))), ...next.deadlines].filter((d) => d.date >= today);
+  const planned = (profile.planned_payments ?? []).filter((p) => p.date >= today);
+  if (planned.length) {
+    deadlines = [
+      ...deadlines,
+      ...planned.map((p) => ({ date: p.date, total: p.amount, items: [{ what: p.label, amount: p.amount }], planned: true })),
+    ].sort((a, b) => a.date.localeCompare(b.date));
+  }
   return { deadlines, current: cur, projected_revenue: projected };
 }
