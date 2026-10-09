@@ -48,7 +48,7 @@ describe("tool catalogue", () => {
       "list_companies", "get_company_info", "lookup", "upload_attachment", "get_einvoice_xml", "duplicate_document", "bulk_duplicate",
       "transform_document", "join_documents", "mark_paid", "send_einvoice", "bulk_send_einvoice", "email_document", "bulk_email",
       "get_document_pdf", "schedule_create", "schedule_run_due", "receivables_report", "revenue_summary", "audit_documents",
-      "client_statement", "api_request", "recover_document", "tax_profile_set", "tax_estimate", "cashflow_forecast", "tax_deadlines_export", "accountant_package", "bank_reconcile", "bank_link_start",
+      "client_statement", "api_request", "recover_document", "list_pending_received_documents", "get_pending_received_document", "register_pending_received_documents", "suggest_expense_categories", "recurring_expenses_report", "tax_profile_set", "tax_estimate", "cashflow_forecast", "tax_deadlines_export", "accountant_package", "bank_reconcile", "bank_link_start",
     ]) expect(names).toContain(n);
     expect(names.length).toBeGreaterThan(70);
   });
@@ -227,5 +227,91 @@ describe("bank", () => {
   it("bank_link_start explains missing configuration", async () => {
     delete process.env.ENABLE_BANKING_APP_ID;
     await expect(call("bank_link_start", {})).rejects.toThrow(/ENABLE_BANKING_APP_ID/);
+  });
+});
+
+describe("fatture passive", () => {
+  const posts = () => api.calls.filter((c) => c.method === "POST" && c.path === "/c/1/received_documents");
+
+  it("list_pending_received_documents summarizes SdI invoices with totals", async () => {
+    const r = await call("list_pending_received_documents", {});
+    expect(r.count).toBe(2);
+    expect(r.totals).toEqual({ amount_net: 150, amount_vat: 33, amount_gross: 183 });
+    expect(r.documents[0]).toMatchObject({
+      id: 501, supplier: "Enel Energia S.p.A.", date: "2026-10-01", received_at: "2026-10-02 00:11:45", invoice_number: "E-123",
+      xml: true, attachment: true, next_due_date: "2026-10-20",
+    });
+    expect(r.documents[1]).toMatchObject({ id: 502, vat_number: "08539010010", installments: 2 });
+    const before = api.calls.length;
+    const all = await call("list_pending_received_documents", { source: "all" });
+    expect(all.count).toBe(3);
+    // the API ignores the type filter: one listing is enough
+    expect(api.calls.length - before).toBe(1);
+    expect((await call("get_pending_received_document", { id: 503 })).supplier_name).toBe("Studio Rossi");
+  });
+
+  it("suggest_expense_categories uses history first, then rules, on existing categories", async () => {
+    const r = await call("suggest_expense_categories", { source: "all" });
+    const by = Object.fromEntries(r.map((x: any) => [x.id, x]));
+    expect(by[502]).toMatchObject({ category: "Telefonia", confidence: "high", source: "storico", existing: true });
+    expect(by[501]).toMatchObject({ category: "Servizi ed edifici", source: "regola", existing: true });
+    expect(by[503]).toMatchObject({ category: "Spese legali e contabili", confidence: "low", existing: true });
+    const free = await call("suggest_expense_categories", { documents: [{ supplier: "GitHub Inc" }] });
+    expect(free[0]).toMatchObject({ supplier: "GitHub Inc", category: "Server e hosting" });
+  });
+
+  it("register dry run shows the documents and creates nothing", async () => {
+    const r = await call("register_pending_received_documents", { all: true, default_category: "Varie" });
+    expect(r).toMatchObject({ dry_run: true, to_create: 2 });
+    expect(r.documents[1].payments_list).toEqual([{ amount: 61, due_date: "2026-10-31", status: "not_paid" }]);
+    expect(posts()).toHaveLength(0);
+    expect(api.pending.size).toBe(3);
+    await expect(call("register_pending_received_documents", {})).rejects.toThrow(/ids/);
+  });
+
+  it("registers with pending_id, payments covering amount_gross, and removes pending on request", async () => {
+    const r = await call("register_pending_received_documents", {
+      ids: [501, 502, 503],
+      categories: { "503": "Consulenze" },
+      auto_category: true,
+      paid: true,
+      paid_date: "2026-10-08",
+      payment_account_id: 3,
+      remove_pending: true,
+      dry_run: false,
+    });
+    expect(r).toMatchObject({ ok: 3, failed: 0 });
+    expect(posts().map((c) => c.body.pending_id)).toEqual([501, 502, 503]);
+    for (const res of r.results) {
+      const doc = api.received.get(res.received_document_id);
+      expect(doc.is_from_pending_expenses).toBe(true);
+      const paid = doc.payments_list.reduce((s: number, x: any) => s + x.amount, 0);
+      expect(paid).toBeCloseTo(doc.amount_gross, 2);
+      expect(doc.payments_list.every((x: any) => x.status === "paid" && x.paid_date === "2026-10-08" && x.payment_account.id === 3)).toBe(true);
+      expect(res.pending_removed).toBe(true);
+    }
+    expect(r.results.map((x: any) => x.category)).toEqual(["Servizi ed edifici", "Telefonia", "Consulenze"]);
+    expect(api.pending.size).toBe(0);
+  });
+
+  it("keeps pending entries unless remove_pending is set", async () => {
+    const r = await call("register_pending_received_documents", { ids: [501], dry_run: false });
+    expect(r.ok).toBe(1);
+    expect(r.results[0].pending_removed).toBeUndefined();
+    expect(api.pending.has(501)).toBe(true);
+    expect(api.calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("a refused pending DELETE is reported without failing the registration", async () => {
+    api.state.pendingDelete = false;
+    const r = await call("register_pending_received_documents", { ids: [501], remove_pending: true, dry_run: false });
+    expect(r).toMatchObject({ ok: 1, failed: 0 });
+    expect(r.results[0]).toMatchObject({ pending_removed: false, pending_note: expect.stringMatching(/405/) });
+  });
+
+  it("recurring_expenses_report reads received documents with one listing", async () => {
+    const r = await call("recurring_expenses_report", {});
+    expect(r).toMatchObject({ months: 12, recurring_suppliers: 0 });
+    expect(api.calls.filter((c) => c.path === "/c/1/received_documents")).toHaveLength(1);
   });
 });
