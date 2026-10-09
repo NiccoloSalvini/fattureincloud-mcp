@@ -72,11 +72,25 @@ function hint(status: number, body: unknown): string {
   return "";
 }
 
+/** Last values of the RateLimit-* headers (shared by every client with the same token). */
+export interface Quota {
+  hourly_remaining?: number;
+  hourly_limit?: number;
+  monthly_remaining?: number;
+  monthly_limit?: number;
+  updated_at?: string;
+}
+
+export class FicQuotaError extends Error {}
+
 export interface FicClientOptions {
   token: string;
   companyId?: number;
   baseUrl?: string;
   fetchImpl?: typeof fetch;
+  /** Requests per hour to keep free for the user and other apps (default 25). */
+  quotaReserve?: number;
+  quota?: Quota;
 }
 
 export class FicClient {
@@ -84,6 +98,8 @@ export class FicClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private companyId?: number;
+  private readonly reserve: number;
+  readonly quota: Quota;
 
   constructor(opts: FicClientOptions) {
     if (!opts.token) throw new Error("Token Fatture in Cloud mancante");
@@ -91,6 +107,8 @@ export class FicClient {
     this.baseUrl = opts.baseUrl ?? API_BASE;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.companyId = opts.companyId;
+    this.reserve = opts.quotaReserve ?? 25;
+    this.quota = opts.quota ?? {};
   }
 
   static fromEnv(env = process.env): FicClient {
@@ -102,13 +120,14 @@ export class FicClient {
       );
     }
     const companyId = env.FIC_COMPANY_ID ? Number(env.FIC_COMPANY_ID) : undefined;
-    return new FicClient({ token, companyId, baseUrl: env.FIC_API_BASE });
+    const quotaReserve = env.FIC_QUOTA_RESERVE ? Number(env.FIC_QUOTA_RESERVE) : undefined;
+    return new FicClient({ token, companyId, baseUrl: env.FIC_API_BASE, quotaReserve });
   }
 
   /** Same credentials, different company. */
   withCompany(companyId: number | undefined): FicClient {
     if (companyId === undefined || companyId === this.companyId) return this;
-    return new FicClient({ token: this.token, companyId, baseUrl: this.baseUrl, fetchImpl: this.fetchImpl });
+    return new FicClient({ token: this.token, companyId, baseUrl: this.baseUrl, fetchImpl: this.fetchImpl, quotaReserve: this.reserve, quota: this.quota });
   }
 
   async request<T = any>(
@@ -128,8 +147,16 @@ export class FicClient {
       headers["Content-Type"] = "application/json";
       body = JSON.stringify(opts.body);
     }
+    const q = this.quota;
+    if (q.hourly_remaining !== undefined && q.hourly_remaining <= this.reserve) {
+      throw new FicQuotaError(
+        `Quota oraria dell'API quasi esaurita: restano ${q.hourly_remaining} richieste su ${q.hourly_limit ?? "?"}, ` +
+          `ne tengo ${this.reserve} di riserva (FIC_QUOTA_RESERVE). Riprova tra poco: il contatore si azzera ogni ora.`,
+      );
+    }
     for (let attempt = 0; ; attempt++) {
       const res = await this.fetchImpl(url, { method, headers, body });
+      this.readQuota(res.headers);
       if (res.status === 429 && attempt < 3) {
         const wait = Number(res.headers.get("Retry-After") ?? 2 ** attempt * 5);
         await new Promise((r) => setTimeout(r, Math.min(wait, 60) * 1000));
@@ -145,6 +172,22 @@ export class FicClient {
       if (!res.ok) throw new FicApiError(res.status, parsed, method, path);
       return parsed as T;
     }
+  }
+
+  private readQuota(h: Headers) {
+    const num = (name: string) => {
+      const v = h.get(name);
+      return v === null || v === "" || Number.isNaN(Number(v)) ? undefined : Number(v);
+    };
+    const hourly = num("RateLimit-HourlyRemaining");
+    if (hourly === undefined) return;
+    Object.assign(this.quota, {
+      hourly_remaining: hourly,
+      hourly_limit: num("RateLimit-HourlyLimit"),
+      monthly_remaining: num("RateLimit-MonthlyRemaining"),
+      monthly_limit: num("RateLimit-MonthlyLimit"),
+      updated_at: new Date().toISOString(),
+    });
   }
 
   /** Resolves the company: explicit id, FIC_COMPANY_ID, or the only company the token can see. */

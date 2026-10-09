@@ -27,6 +27,22 @@ export function registerAdminTools(ctx: Ctx) {
 
   tool(
     ctx,
+    "api_quota",
+    {
+      description:
+        "Richieste API rimaste nell'ora e nel mese (limiti di Fatture in Cloud condivisi tra le app private). Usalo prima di operazioni in blocco.",
+      annotations: { readOnlyHint: true },
+      noCompany: true,
+    },
+    async () => {
+      // the RateLimit headers come only with company-scoped endpoints
+      if (ctx.client.quota.hourly_remaining === undefined) await ctx.client.get("/info/payment_accounts");
+      return { ...ctx.client.quota, note: "Il server si ferma da solo quando restano poche richieste orarie (FIC_QUOTA_RESERVE, default 25)." };
+    },
+  );
+
+  tool(
+    ctx,
     "get_company_info",
     {
       description: "Dati dell'azienda (anagrafica, piano, impostazioni) e, se richiesto, l'uso del piano per categoria.",

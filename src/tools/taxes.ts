@@ -68,13 +68,18 @@ export function registerTaxTools(ctx: Ctx) {
         inps: inpsSchema.optional(),
         overrides: z.record(z.string().regex(/^\d{4}$/), yearOverride).optional().describe("Per anno, es. { \"2025\": { contributions_paid: 3200 } }"),
       },
-      noCompany: true,
     },
-    async (a) => {
+    async (a, c) => {
       const current = await loadProfile(file);
+      // first setup: take the rate from the regime registered in Fatture in Cloud (forfettario_5 / forfettario_15)
+      let defaultRate = 0.15;
+      if (!current && a.tax_rate === undefined) {
+        const regime = String((await c.get("/settings/tax_profile").catch(() => null))?.data?.regime ?? "");
+        if (/forfettario_5\b/.test(regime)) defaultRate = 0.05;
+      }
       const merged = {
         coefficient: 0.78,
-        tax_rate: 0.15,
+        tax_rate: defaultRate,
         inps: { type: "gestione_separata" },
         ...current,
         ...Object.fromEntries(Object.entries(a).filter(([k, v]) => v !== undefined && k !== "overrides")),
