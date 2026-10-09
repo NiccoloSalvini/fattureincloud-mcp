@@ -67,6 +67,9 @@ async function saveFile(target: string, defaultName: string, bytes: Uint8Array |
 }
 
 export function registerDocumentTools(ctx: Ctx) {
+  // A remote server has no filesystem of the user's to save to
+  const saveTo: { save_to?: z.ZodOptional<z.ZodString> } = ctx.remote ? {} : { save_to: z.string().optional() };
+
   tool(
     ctx,
     "get_new_document_defaults",
@@ -225,15 +228,18 @@ export function registerDocumentTools(ctx: Ctx) {
     ctx,
     "get_einvoice_xml",
     {
-      description: "Scarica l'XML FatturaPA di un documento. Con save_to lo salva su file (percorso o cartella), altrimenti lo restituisce.",
+      description: ctx.remote
+        ? "Scarica l'XML FatturaPA di un documento e lo restituisce."
+        : "Scarica l'XML FatturaPA di un documento. Con save_to lo salva su file (percorso o cartella), altrimenti lo restituisce.",
       input: {
         id: z.number().int(),
         include_attachment: z.boolean().optional(),
-        save_to: z.string().optional(),
+        ...saveTo,
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ id, include_attachment, save_to }, c) => {
+    async ({ id, include_attachment, ...rest }, c) => {
+      const { save_to } = rest as { save_to?: string };
       const xml = await c.get(`/issued_documents/${id}/e_invoice/xml`, { include_attachment });
       const text = typeof xml === "string" ? xml : JSON.stringify(xml);
       if (!save_to) return text;
@@ -256,11 +262,14 @@ export function registerDocumentTools(ctx: Ctx) {
     ctx,
     "get_document_pdf",
     {
-      description: "Link al PDF del documento (anche DDT e fattura accompagnatoria). Con save_to scarica il PDF su file o in una cartella.",
-      input: { id: z.number().int(), save_to: z.string().optional() },
+      description: ctx.remote
+        ? "Link al PDF del documento (anche DDT e fattura accompagnatoria)."
+        : "Link al PDF del documento (anche DDT e fattura accompagnatoria). Con save_to scarica il PDF su file o in una cartella.",
+      input: { id: z.number().int(), ...saveTo },
       annotations: { readOnlyHint: true },
     },
-    async ({ id, save_to }, c) => {
+    async ({ id, ...rest }, c) => {
+      const { save_to } = rest as { save_to?: string };
       const d = await c.getDocument(id);
       const links = { pdf: d.url, delivery_note_pdf: d.dn_url ?? undefined, accompanying_invoice_pdf: d.ai_url ?? undefined, attachment: d.attachment_url ?? undefined };
       if (!save_to) return links;
@@ -270,26 +279,29 @@ export function registerDocumentTools(ctx: Ctx) {
     },
   );
 
-  tool(
-    ctx,
-    "upload_attachment",
-    {
-      description:
-        "Carica un file locale come allegato e restituisce l'attachment_token. Poi collegalo con update_* passando { attachment_token }.",
-      input: {
-        file_path: z.string(),
-        resource: z.enum(["issued_documents", "received_documents", "archive", "taxes"]).default("issued_documents"),
+  // Reads a local path: only on the user's machine
+  if (!ctx.remote) {
+    tool(
+      ctx,
+      "upload_attachment",
+      {
+        description:
+          "Carica un file locale come allegato e restituisce l'attachment_token. Poi collegalo con update_* passando { attachment_token }.",
+        input: {
+          file_path: z.string(),
+          resource: z.enum(["issued_documents", "received_documents", "archive", "taxes"]).default("issued_documents"),
+        },
       },
-    },
-    async ({ file_path, resource }, c) => {
-      const file = expandHome(file_path);
-      const bytes = new Uint8Array(await fs.readFile(file));
-      const name = path.basename(file);
-      const ext = name.split(".").pop()?.toLowerCase() ?? "";
-      const token = await c.uploadAttachment(resource, bytes, name, MIME[ext] ?? "application/octet-stream");
-      return { attachment_token: token, file: name, next: `update_… con data: { "attachment_token": "${token}" }` };
-    },
-  );
+      async ({ file_path, resource }, c) => {
+        const file = expandHome(file_path);
+        const bytes = new Uint8Array(await fs.readFile(file));
+        const name = path.basename(file);
+        const ext = name.split(".").pop()?.toLowerCase() ?? "";
+        const token = await c.uploadAttachment(resource, bytes, name, MIME[ext] ?? "application/octet-stream");
+        return { attachment_token: token, file: name, next: `update_… con data: { "attachment_token": "${token}" }` };
+      },
+    );
+  }
 
   tool(
     ctx,

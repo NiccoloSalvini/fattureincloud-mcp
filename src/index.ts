@@ -14,8 +14,9 @@ const HELP = `fattureincloud-mcp ${VERSION} — MCP server per Fatture in Cloud
 
 Uso:
   fattureincloud-mcp                     avvia il server MCP su stdio (per Claude, Cursor, ...)
-  fattureincloud-mcp http [--port 3000] [--host 127.0.0.1]
-                                         server MCP Streamable HTTP, stateless
+  fattureincloud-mcp http [--port 3000] [--host 127.0.0.1] [--oauth]
+                                         server MCP Streamable HTTP, stateless; con --oauth
+                                         login "Accedi con Fatture in Cloud" (claude.ai)
   fattureincloud-mcp run-due [--dry-run] [--notify]
                                          esegue le fatture ricorrenti in scadenza oggi
   fattureincloud-mcp schedules           elenca le fatture ricorrenti
@@ -24,6 +25,7 @@ Uso:
   fattureincloud-mcp uninstall-scheduler
 
 Variabili: FIC_ACCESS_TOKEN (obbligatoria), FIC_COMPANY_ID, FIC_TOOLSETS, FIC_MCP_DATA_DIR.
+Modalità OAuth: PUBLIC_URL, FIC_OAUTH_CLIENT_ID, FIC_OAUTH_CLIENT_SECRET, OAUTH_ENCRYPTION_KEY, FIC_OAUTH_SCOPES.
 Le variabili possono stare in ${envFile()}.`;
 
 function flag(args: string[], name: string): boolean {
@@ -50,12 +52,19 @@ async function main() {
       return;
     }
     case "http": {
-      const { startHttp } = await import("./http.js");
-      startHttp({
+      const common = {
         port: Number(option(args, "port", process.env.PORT ?? "3000")),
         host: option(args, "host", process.env.HOST ?? "127.0.0.1"),
         toolsets: parseToolsets(process.env.FIC_TOOLSETS),
-      });
+      };
+      // OAuth mode: explicit flag, or implied by the Fatture in Cloud OAuth app credentials
+      if (flag(args, "oauth") || process.env.FIC_OAUTH_CLIENT_ID) {
+        const { oauthConfigFromEnv, startOAuthHttp } = await import("./oauth.js");
+        startOAuthHttp({ ...common, config: oauthConfigFromEnv() });
+        return;
+      }
+      const { startHttp } = await import("./http.js");
+      startHttp(common);
       return;
     }
     case "run-due":

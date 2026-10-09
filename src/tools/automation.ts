@@ -98,6 +98,9 @@ export function registerAutomationTools(ctx: Ctx) {
 
   // ---- Ricorrenze -----------------------------------------------------------
 
+  // Schedules live in a local file run by a local job: not on a shared server
+  if (ctx.remote) return;
+
   tool(
     ctx,
     "schedule_create",
