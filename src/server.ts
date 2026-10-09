@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { FicClient } from "./client.js";
 import { ScheduleStore } from "./schedules.js";
-import { type Ctx, type Toolset, TOOLSETS } from "./tools/define.js";
+import { type Ctx, LOCAL_ONLY_TOOLSETS, type Toolset, TOOLSETS } from "./tools/define.js";
 import { registerCrud } from "./tools/crud.js";
 import { registerDocumentTools } from "./tools/documents.js";
 import { registerAutomationTools } from "./tools/automation.js";
@@ -24,18 +24,33 @@ export function parseToolsets(value: string | undefined): Set<Toolset> {
   return new Set([...(wanted as Toolset[]), "admin"]);
 }
 
-export function createServer(client: FicClient, opts: { store?: ScheduleStore; toolsets?: Set<Toolset> } = {}) {
+export interface ServerOptions {
+  store?: ScheduleStore;
+  toolsets?: Set<Toolset>;
+  /**
+   * Shared remote server (OAuth mode): skips the tools that read or write the
+   * local filesystem or rely on local schedules.
+   */
+  remote?: boolean;
+}
+
+export function createServer(client: FicClient, opts: ServerOptions = {}) {
+  const remote = opts.remote ?? false;
   const server = new McpServer(
     { name: "fattureincloud-mcp", version: VERSION },
     {
       instructions:
         "Server per Fatture in Cloud (fatturazione italiana). Regole: le azioni verso l'esterno (invio SdI, email) sono irreversibili, " +
         "quindi prima mostra all'utente cosa verrà inviato e usa dry_run quando disponibile. Una fattura elettronica inviata si corregge " +
-        "solo con nota di credito. Per ripetere fatture usa duplicate_document o le ricorrenze (schedule_*), non ricostruirle a mano.",
+        "solo con nota di credito. " +
+        (remote
+          ? "Per ripetere fatture usa duplicate_document o bulk_duplicate, non ricostruirle a mano."
+          : "Per ripetere fatture usa duplicate_document o le ricorrenze (schedule_*), non ricostruirle a mano."),
     },
   );
-  const ctx: Ctx = { server, client, store: opts.store ?? new ScheduleStore() };
-  const enabled = opts.toolsets ?? new Set(TOOLSETS);
+  const ctx: Ctx = { server, client, store: opts.store ?? new ScheduleStore(), remote };
+  const enabled = new Set(opts.toolsets ?? TOOLSETS);
+  if (remote) for (const t of LOCAL_ONLY_TOOLSETS) enabled.delete(t);
 
   registerAdminTools(ctx);
   registerCrud(ctx, enabled);
@@ -45,11 +60,11 @@ export function createServer(client: FicClient, opts: { store?: ScheduleStore; t
   if (enabled.has("taxes")) registerTaxTools(ctx);
   if (enabled.has("planning")) registerPlanningTools(ctx);
   if (enabled.has("bank")) registerBankTools(ctx);
-  registerPrompts(server);
+  registerPrompts(server, remote);
   return server;
 }
 
-function registerPrompts(server: McpServer) {
+function registerPrompts(server: McpServer, remote: boolean) {
   server.registerPrompt(
     "chiusura_mese",
     {
@@ -67,14 +82,17 @@ function registerPrompts(server: McpServer) {
               `Facciamo la chiusura di ${mese ?? "il mese scorso"} su Fatture in Cloud.\n` +
               "1. audit_documents: elenca fatture non inviate allo SdI, scartate, senza bollo, buchi di numerazione.\n" +
               "2. receivables_report: chi deve ancora pagare e cosa è scaduto.\n" +
-              "3. schedule_list: ricorrenze del mese e loro esito.\n" +
-              "4. revenue_summary: incassato da inizio anno e distanza dalla soglia del forfettario.\n" +
+              (remote ? "" : "3. schedule_list: ricorrenze del mese e loro esito.\n") +
+              `${remote ? 3 : 4}. revenue_summary: incassato da inizio anno e distanza dalla soglia del forfettario.\n` +
               "Riassumi in una tabella e proponi le azioni (invio, solleciti, mark_paid), senza eseguire nulla di irreversibile prima che io confermi.",
           },
         },
       ],
     }),
   );
+
+  // Recurring invoices need the local schedules
+  if (remote) return;
 
   server.registerPrompt(
     "nuova_ricorrenza",

@@ -7,10 +7,19 @@ import type { ScheduleStore } from "../schedules.js";
 export const TOOLSETS = ["documents", "registry", "received", "accounting", "automation", "reports", "taxes", "planning", "bank", "admin"] as const;
 export type Toolset = (typeof TOOLSETS)[number];
 
+/**
+ * Toolsets that only make sense on the user's own machine: they read or write
+ * local files (tax profile, bank statements and sessions, .ics, zip). A shared
+ * remote server skips them.
+ */
+export const LOCAL_ONLY_TOOLSETS: readonly Toolset[] = ["taxes", "planning", "bank"];
+
 export interface Ctx {
   server: McpServer;
   client: FicClient;
   store: ScheduleStore;
+  /** Shared remote server: no local filesystem, no local schedules. */
+  remote?: boolean;
 }
 
 const companyArg = {
