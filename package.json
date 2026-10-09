@@ -1,6 +1,6 @@
 {
   "name": "fattureincloud-mcp",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "MCP server per Fatture in Cloud: fatture ricorrenti, duplicazione e invii in blocco, SdI, incassi, report forfettario e tutta l API v2",
   "mcpName": "io.github.NiccoloSalvini/fattureincloud-mcp",
   "type": "module",

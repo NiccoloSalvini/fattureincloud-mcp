@@ -64,6 +64,13 @@ describe("other regimes and overrides", () => {
     expect(dl).toEqual(expect.arrayContaining(["2026-05-16", "2026-08-20", "2026-11-30"]));
   });
 
+  it("per-year INPS rate (e.g. 24% during a PhD)", () => {
+    const p = { ...gs, overrides: { "2025": { inps_rate: 0.24 } } };
+    const ys = computeYears(p, { 2024: 30000, 2025: 40000 }, 2024, 2025);
+    expect(ys.get(2024)!.contributions_due).toBe(6100.38);
+    expect(ys.get(2025)!.contributions_due).toBe(7488);
+  });
+
   it("overrides replace modelled payments", () => {
     const p = { ...gs, overrides: { "2025": { contributions_paid: 5000, tax_advances_paid: 3000 } } };
     const y = computeYears(p, { 2024: 30000, 2025: 40000 }, 2024, 2025).get(2025)!;
