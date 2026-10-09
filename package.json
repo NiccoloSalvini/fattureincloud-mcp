@@ -51,10 +51,12 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
+    "express": "^5.2.1",
     "fflate": "^0.8.3",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^26.6.4",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2",

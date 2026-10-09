@@ -273,11 +273,109 @@ fattureincloud-mcp http --port 3000 --host 0.0.0.0
 
 Il server è stateless e non conserva credenziali. Ogni richiesta porta le proprie: `Authorization: Bearer <token>` (oppure `X-FIC-Token`) e, se serve, `X-FIC-Company`. L'endpoint è `POST /mcp`, il controllo di stato è `GET /health`. Se lo esponi su Internet, mettilo dietro HTTPS.
 
+Per collegarlo a claude.ai senza copiare token usa invece la modalità OAuth, descritta qui sotto.
+
+## Server remoto (claude.ai)
+
+Con `--oauth` il server diventa un connettore che chiunque aggiunge a claude.ai (web, desktop e app mobile) con un indirizzo e un clic su **«Accedi con Fatture in Cloud»**: niente token da generare né da incollare. Lo installi una volta su un server con HTTPS; chi lo usa fa solo il login.
+
+Il server implementa la [specifica di autorizzazione MCP](https://modelcontextprotocol.io/specification/latest/basic/authorization) (OAuth 2.1 con PKCE, registrazione dinamica dei client, metadati RFC 9728 e RFC 8414) e passa il login al [flusso OAuth di Fatture in Cloud](https://developers.fattureincloud.it/docs/authentication/code-flow/). Non usa database: i token sono cifrati (AES-256-GCM) con una chiave del server e contengono quelli di Fatture in Cloud, quindi gira anche su servizi che si spengono quando non servono, come Cloud Run.
+
+### 1. App Fatture in Cloud con OAuth
+
+1. In Fatture in Cloud apri **Impostazioni → App e API** e crea un'**applicazione privata** (o modifica quella che hai).
+2. In «Autenticazione e accesso» spunta **OAuth 2.0** e come **Redirect URL** inserisci `https://<il-tuo-dominio>/oauth/callback`, cioè `PUBLIC_URL` seguito da `/oauth/callback`, identico carattere per carattere.
+3. Salva e copia **Client ID** e **Client Secret**.
+
+Un'app privata accetta il login solo dell'account che l'ha creata (e degli utenti che Fatture in Cloud ti consente di autorizzare, se l'opzione è disponibile per il tuo piano). Per farla usare ad altre persone o clienti devi aggiungere i loro indirizzi tra quelli ammessi oppure pubblicare l'app tramite la procedura di Fatture in Cloud.
+
+I permessi chiesti al login sono, di default, lettura e scrittura su anagrafiche, prodotti, documenti emessi e ricevuti, corrispettivi, F24, archivio, prima nota e impostazioni, più la lettura di email e situazione. Al login l'utente sceglie l'azienda. Per chiedere meno permessi imposta `FIC_OAUTH_SCOPES`, ad esempio `entity.clients:r issued_documents.invoices:r` per un accesso in sola lettura alle fatture.
+
+### 2. Variabili
+
+| Variabile | |
+| --- | --- |
+| `PUBLIC_URL` | obbligatoria: indirizzo pubblico HTTPS, solo l'origine, es. `https://fic.example.com` |
+| `FIC_OAUTH_CLIENT_ID`, `FIC_OAUTH_CLIENT_SECRET` | obbligatorie: dall'app Fatture in Cloud. Se `FIC_OAUTH_CLIENT_ID` è impostata la modalità OAuth si attiva anche senza `--oauth` |
+| `OAUTH_ENCRYPTION_KEY` | obbligatoria: chiave casuale di almeno 32 caratteri, generala con `openssl rand -base64 32`. Cambiarla scollega tutti. Per ruotarla senza scollegare nessuno metti la nuova davanti alla vecchia, separate da virgola, e togli la vecchia dopo un anno |
+| `FIC_OAUTH_SCOPES` | facoltativa: permessi Fatture in Cloud separati da spazi (default: vedi sopra) |
+| `FIC_TOOLSETS` | facoltativa, come in locale |
+| `TRUST_PROXY` | facoltativa: numero di proxy davanti al server (default `1`, giusto per Cloud Run, Fly e un reverse proxy), serve per i limiti di richieste per IP |
+| `PORT`, `HOST` | il Dockerfile usa `8080` e `0.0.0.0` |
+
+Per provarlo in locale:
+
+```bash
+PUBLIC_URL=https://fic.example.com FIC_OAUTH_CLIENT_ID=... FIC_OAUTH_CLIENT_SECRET=... \
+OAUTH_ENCRYPTION_KEY="$(openssl rand -base64 32)" fattureincloud-mcp http --oauth --host 0.0.0.0 --port 8080
+```
+
+Endpoint: `/mcp` (protetto), `/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`, `/register`, `/authorize`, `/oauth/callback`, `/token`, `/health`.
+
+### 3. Deploy con Docker e Google Cloud Run
+
+Nel repository c'è un `Dockerfile` che compila il progetto e avvia `http --oauth` sulla porta 8080:
+
+```bash
+docker build -t fattureincloud-mcp .
+```
+
+```bash
+docker run -p 8080:8080 -e PUBLIC_URL=https://fic.example.com -e FIC_OAUTH_CLIENT_ID=... -e FIC_OAUTH_CLIENT_SECRET=... -e OAUTH_ENCRYPTION_KEY=... fattureincloud-mcp
+```
+
+Esempio su Cloud Run (servono un progetto Google Cloud e `gcloud` configurato). I segreti vanno in Secret Manager:
+
+```bash
+printf %s "il-client-secret" | gcloud secrets create fic-oauth-client-secret --data-file=-
+openssl rand -base64 32 | tr -d '\n' | gcloud secrets create fic-oauth-encryption-key --data-file=-
+```
+
+Il service account di Cloud Run deve poterli leggere (ruolo `roles/secretmanager.secretAccessor`). L'indirizzo di un servizio Cloud Run è prevedibile, `https://<servizio>-<numero-progetto>.<regione>.run.app`, quindi `PUBLIC_URL` si imposta già al primo deploy. Dalla cartella del repository:
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe "$(gcloud config get-value project)" --format 'value(projectNumber)')
+URL=https://fattureincloud-mcp-$PROJECT_NUMBER.europe-west1.run.app
+gcloud run deploy fattureincloud-mcp --source . --region europe-west1 --allow-unauthenticated \
+  --set-env-vars PUBLIC_URL=$URL,FIC_OAUTH_CLIENT_ID=il-client-id \
+  --set-secrets FIC_OAUTH_CLIENT_SECRET=fic-oauth-client-secret:latest,OAUTH_ENCRYPTION_KEY=fic-oauth-encryption-key:latest
+```
+
+Controlla che `$URL` coincida con l'indirizzo stampato da `gcloud run deploy`, poi metti `$URL/oauth/callback` come Redirect URL nell'app Fatture in Cloud. Con un dominio tuo (mappatura di dominio o load balancer) usa quello in `PUBLIC_URL` e nel Redirect URL. `--allow-unauthenticated` serve perché claude.ai deve raggiungere il server: l'accesso ai dati è protetto dal login OAuth.
+
+### 4. Aggiungerlo in claude.ai
+
+1. In claude.ai apri **Impostazioni → Connettori → Aggiungi connettore personalizzato**. Nei piani Team ed Enterprise lo aggiunge un amministratore per tutta l'organizzazione.
+2. Nome a piacere, URL `https://<il-tuo-dominio>/mcp`. Lascia vuoti Client ID e Client Secret nelle opzioni avanzate: claude.ai si registra da solo.
+3. Premi **Connetti**: si apre una pagina del server che indica chi chiede l'accesso; premi **Accedi con Fatture in Cloud**, fai il login, scegli l'azienda e conferma i permessi. Da lì il connettore è disponibile anche nell'app mobile e in Claude Desktop.
+
+Claude rinnova da solo il token ogni 24 ore; il login va rifatto solo se Fatture in Cloud rifiuta il rinnovo, al più tardi dopo un anno o se revochi l'accesso. Per scollegare un account rimuovi il connettore in claude.ai oppure revoca l'accesso dell'app da Fatture in Cloud.
+
+### Strumenti disponibili in remoto
+
+Su un server condiviso non ci sono il tuo disco né il job giornaliero, quindi in modalità OAuth sono disponibili 72 strumenti su 93. Mancano:
+
+- i gruppi **taxes**, **planning** e **bank**, che leggono o scrivono file locali: profilo fiscale, estratti conto, sessioni bancarie, `.ics` e zip;
+- le ricorrenze `schedule_*` e il prompt `nuova_ricorrenza`, che vivono in un file locale eseguito da un job locale;
+- `upload_attachment`, che legge un file dal disco, e il parametro `save_to` di `get_document_pdf` e `get_einvoice_xml`, che restituiscono comunque il link o l'XML.
+
+Restano tutti i CRUD, duplicazione, trasformazione, invio SdI ed email, le operazioni in blocco (`bulk_*`), i report (`receivables_report`, `revenue_summary`, `audit_documents`, `client_statement`) e gli strumenti di amministrazione, compreso `api_request`. Con più aziende si usa `company_id` nei tool, oppure l'header `X-FIC-Company`.
+
+### Sicurezza della modalità OAuth
+
+- Prima di mandare l'utente a Fatture in Cloud il server mostra una propria pagina di consenso con il nome del client e il sito a cui tornerà. Fatture in Cloud vede una sola app, la tua, e senza questo passaggio un client qualsiasi potrebbe sfruttare un login già concesso.
+- PKCE S256 obbligatorio, `redirect_uri` confrontato esattamente con quelli registrati (per gli indirizzi `localhost` delle app native è ammessa solo una porta diversa, come prevede RFC 8252), `state` cifrato e legato al browser con un cookie per evitare CSRF.
+- Il login in corso scade dopo 10 minuti, il codice di autorizzazione dopo 5 ed è legato al client, al `redirect_uri` e alla challenge PKCE. Il token di accesso scade con quello di Fatture in Cloud (24 ore).
+- I token sono opachi: dentro c'è il token Fatture in Cloud cifrato, illeggibile senza `OAUTH_ENCRYPTION_KEY`. Il server non li scrive nei log.
+- Non essendoci un database, un singolo token non si può revocare dal server: si revoca l'accesso da Fatture in Cloud, oppure si cambia `OAUTH_ENCRYPTION_KEY` per scollegare tutti.
+- Registrazione, autorizzazione e token hanno limiti di richieste per IP; i body sono limitati.
+
 ## Sicurezza
 
 - Le azioni verso l'esterno (invio allo SdI, email) sono marcate come distruttive, quindi i client MCP chiedono conferma. Gli strumenti in blocco partono in anteprima.
 - **Una fattura elettronica inviata allo SdI non si cancella**: si corregge solo con una nota di credito. Per questo `send_einvoice` verifica sempre l'XML prima di inviare.
 - Il token resta sul tuo computer, oppure nell'header di ogni richiesta in modalità HTTP. Le ricorrenze sono un file JSON locale.
+- In modalità OAuth il server non conserva nulla: i token di Fatture in Cloud viaggiano cifrati dentro quelli emessi per il client MCP (vedi [Server remoto](#server-remoto-claudeai)).
 
 ## Sviluppo
 
@@ -305,6 +403,8 @@ Struttura:
 - `src/taxes.ts`: modello di imposta e contributi del forfettario
 - `src/cashflow.ts`, `src/ics.ts`, `src/accountant.ts`: pianificazione
 - `src/bank/`: parser degli estratti conto, abbinamento, client Enable Banking
+- `src/http.ts`: server HTTP con token nell'header
+- `src/oauth.ts`, `src/seal.ts`: modalità OAuth per claude.ai e token cifrati
 - `src/tools/`: definizione dei tool; i CRUD sono generati da una tabella in `crud.ts`
 
 ### Rilasci
