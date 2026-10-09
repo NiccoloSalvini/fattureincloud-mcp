@@ -10,6 +10,7 @@ import { registerAutomationTools } from "./tools/automation.js";
 import { registerInsightTools } from "./tools/insights.js";
 import { registerAdminTools } from "./tools/admin.js";
 import { registerTaxTools } from "./tools/taxes.js";
+import { registerRegimeTools } from "./tools/regime.js";
 import { registerPlanningTools } from "./tools/planning.js";
 import { registerBankTools } from "./tools/bank.js";
 
@@ -42,7 +43,10 @@ export function createServer(client: FicClient, opts: { store?: ScheduleStore; t
   if (enabled.has("documents")) registerDocumentTools(ctx);
   if (enabled.has("automation")) registerAutomationTools(ctx);
   if (enabled.has("reports")) registerInsightTools(ctx);
-  if (enabled.has("taxes")) registerTaxTools(ctx);
+  if (enabled.has("taxes")) {
+    registerTaxTools(ctx);
+    registerRegimeTools(ctx);
+  }
   if (enabled.has("planning")) registerPlanningTools(ctx);
   if (enabled.has("bank")) registerBankTools(ctx);
   registerPrompts(server);

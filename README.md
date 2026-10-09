@@ -154,6 +154,7 @@ fattureincloud-mcp run-due --dry-run
 **taxes**
 - `tax_profile_set`, `tax_profile_get`: coefficiente, aliquota, previdenza, versamenti reali
 - `tax_estimate`: scadenze del 30 giugno e del 30 novembre, totale annuo, quota da accantonare
+- `regime_simulator`: forfettario contro ordinario contro SRL sui tuoi numeri
 
 **planning**
 - `cashflow_forecast`: previsione di cassa e accantonamento mensile
@@ -256,6 +257,17 @@ Le banche italiane, Intesa compresa, non danno l'API PSD2 ai privati: è riserva
 5. Da lì basta `bank_reconcile` senza file: legge gli ultimi 90 giorni dal conto collegato.
 
 Le sessioni sono salvate in `bank-sessions.json`, leggibile solo dal tuo utente. La chiave resta sul tuo computer.
+
+## Simulatore di regime
+
+`regime_simulator` confronta, sugli stessi ricavi e costi, quanto resta in tasca con:
+- **forfettario**, al 5% o al 15%;
+- **ordinario**: ditta individuale, IRPEF a scaglioni 23/33/43% con detrazione per lavoro autonomo e addizionali;
+- **SRL unipersonale**: IRES 24%, IRAP 3,9% e dividendi al 26%. Il compenso dell'amministratore è scelto per pagare meno imposte, e sono inclusi i costi fissi della società.
+
+Indica anche il livello di ricavi oltre cui il forfettario smette di convenire.
+
+Di default usa la proiezione degli incassi dell'anno e i parametri del profilo fiscale. Se sei nei primi cinque anni, ripete il confronto con l'aliquota al 15% per mostrare cosa cambia dopo. I costi reali (`costs`) contano solo per ordinario e SRL. È un confronto su un anno a regime, utile per capire quando parlarne con il commercialista, non per decidere da soli.
 
 ## Pianificazione
 
