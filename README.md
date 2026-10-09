@@ -30,6 +30,7 @@ Fa quello che l'app non fa:
 - «A novembre avrò abbastanza sul conto per l'acconto? Quanto metto da parte al mese?»
 - «Metti le scadenze fiscali nel mio calendario e negli F24 di Fatture in Cloud.»
 - «Prepara il pacchetto 2026 per il commercialista.»
+- «Registra le fatture dei fornitori arrivate dallo SdI, con la categoria giusta. Quali spese ricorrenti sono aumentate?»
 
 ## Installazione
 
@@ -78,7 +79,7 @@ Altri esempi in [`examples/`](examples/). Finché il pacchetto non è su npm, al
 | --- | --- |
 | `FIC_ACCESS_TOKEN` | obbligatoria |
 | `FIC_COMPANY_ID` | facoltativa: se il token vede una sola azienda viene scelta da sola, altrimenti ogni tool accetta `company_id` |
-| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 93: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
+| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 99: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
 | `FIC_QUOTA_RESERVE` | facoltativa: richieste orarie da lasciare libere (default 25). L'API concede 1.000 richieste all'ora e 40.000 al mese, condivise tra le app private; il server legge i contatori a ogni risposta e si ferma prima di esaurirli. `api_quota` mostra quante ne restano |
 | `FIC_MCP_DATA_DIR` | dove salvare le ricorrenze, default `~/.config/fattureincloud-mcp` |
 
@@ -125,7 +126,7 @@ fattureincloud-mcp run-due --dry-run
 
 ## Strumenti
 
-93 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
+99 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
 
 **documents**: documenti emessi
 - `list_/get_/create_/update_/delete_issued_document(s)`
@@ -168,7 +169,12 @@ fattureincloud-mcp run-due --dry-run
 
 **registry**: CRUD su `clients`, `suppliers`, `products`
 
-**received**: CRUD su `received_documents` (spese, note di credito passive)
+**received**: fatture passive e spese
+- CRUD su `received_documents` (spese, note di credito passive)
+- `list_pending_received_documents`, `get_pending_received_document`: fatture dei fornitori arrivate dallo SdI e in attesa di registrazione
+- `register_pending_received_documents`: le registra come spese, con categoria, rate e pagamento (`dry_run` attivo di default)
+- `suggest_expense_categories`: categoria proposta dallo storico del fornitore o da parole chiave
+- `recurring_expenses_report`: fornitori ricorrenti, prossima fattura attesa, totale annuo, aumenti di prezzo
 
 **accounting**: CRUD su `receipts` (corrispettivi), `f24`, `archive_documents`, `cashbook_entries` (prima nota)
 
@@ -204,6 +210,20 @@ Il calcolo:
 Per l'anno in corso gli incassi vengono proiettati a fine anno, oppure usi solo quelli avvenuti (`projection: "to_date"`) o una tua stima (`revenue_estimate`). Se hai versato importi diversi da quelli calcolati, o hai incassi fuori da Fatture in Cloud, inseriscili per anno in `overrides`: la stima diventa esatta. Il risultato include anche la percentuale da accantonare su ogni incasso e l'avviso quando gli acconti superano l'imposta, caso in cui conviene il metodo previsionale.
 
 È una stima per pianificare la liquidità, non un calcolo da dichiarazione: aliquote e massimali cambiano ogni anno (i default sono quelli del 2025 e si possono modificare nel profilo), e prima di pagare conviene il controllo del commercialista.
+
+## Fatture passive (regime ordinario)
+
+Le fatture dei fornitori arrivano dallo SdI in Fatture in Cloud tra i **documenti ricevuti in attesa**, e restano lì finché non le registri come spese. Il server le gestisce in blocco:
+
+1. `list_pending_received_documents` elenca fornitore, data, numero, imponibile, IVA, totale, scadenza e se c'è l'XML. Di default mostra quelle arrivate dallo SdI (`source: "agyo"`); con `all` include anche quelle caricate per email o dal browser.
+2. `suggest_expense_categories` propone la categoria: prima quella già usata per lo stesso fornitore (per P.IVA, poi per nome) negli ultimi 24 mesi, altrimenti regole su nome e descrizione (energia e gas → Utenze, TIM/Vodafone/Iliad/Fastweb → Telefono e internet, Aruba/Google/AWS/Microsoft/GitHub/OpenAI/Anthropic → Software e servizi cloud, ENI/Q8 → Carburante, Amazon → Acquisti, commercialista → Consulenze, locazione → Affitti). Ogni proposta ha confidenza e motivo, e quando possibile usa una categoria che esiste già: per esempio, tra le predefinite di Fatture in Cloud, le utenze vanno in «Servizi ed edifici» e il software in «Server e hosting».
+3. `register_pending_received_documents` crea le spese. Ogni spesa è collegata al documento in attesa (`pending_id`), così Fatture in Cloud conserva XML e allegati. Le rate coprono sempre il totale lordo, perché l'API rifiuta le spese con pagamenti incompleti. Con `paid`, `paid_date` e `payment_account_id` le registri già pagate. Si parte in anteprima. `remove_pending` elimina anche il documento dalla lista d'attesa: la specifica pubblica dell'API non documenta questa operazione, quindi se viene rifiutata la spesa resta creata e il risultato lo segnala.
+
+`recurring_expenses_report` analizza le spese degli ultimi 12 mesi e trova i fornitori con almeno tre fatture a cadenza regolare: mensile, bimestrale (molte bollette), trimestrale, semestrale o annuale. Per ognuno indica importo medio, ultima fattura, prossima attesa e totale annuo stimato. Segnala gli aumenti oltre il 10% rispetto alla media precedente e le fatture attese da più di 15 giorni.
+
+Per leggere tutto bastano poche richieste: le liste sono paginate a 100 righe e non c'è una chiamata per documento.
+
+Nel **regime forfettario** le fatture d'acquisto non hanno effetto fiscale (niente IVA detraibile né costi deducibili). Puoi comunque registrarle per tenere archivio e scadenze.
 
 ## Banca: riconciliazione degli incassi
 
@@ -315,6 +335,7 @@ Struttura:
 - `src/schedules.ts`, `src/runner.ts`: ricorrenze
 - `src/reports.ts`: crediti, ricavi, controlli (funzioni pure)
 - `src/taxes.ts`: modello di imposta e contributi del forfettario
+- `src/expenses.ts`: fatture passive, categorie di spesa e spese ricorrenti (funzioni pure)
 - `src/cashflow.ts`, `src/ics.ts`, `src/accountant.ts`: pianificazione
 - `src/bank/`: parser degli estratti conto, abbinamento, client Enable Banking
 - `src/tools/`: definizione dei tool; i CRUD sono generati da una tabella in `crud.ts`

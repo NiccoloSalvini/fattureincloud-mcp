@@ -4,7 +4,25 @@ export function fakeApi() {
   const calls: { method: string; path: string; body?: any }[] = [];
   let nextId = 100;
   let nextNumber = 27;
-  const state = { verifyOk: true, emails: [] as any[], sent: [] as number[], f24: [] as any[] };
+  const state = { verifyOk: true, pendingDelete: true, emails: [] as any[], sent: [] as number[], f24: [] as any[] };
+  const received = new Map<number, any>([
+    [1, { id: 1, type: "expense", date: "2026-02-01", entity: { name: "Aruba" }, category: "Software", description: "Hosting", amount_net: 100, amount_vat: 22, amount_gross: 122, payments_list: [{ status: "paid" }] }],
+    [2, { id: 2, type: "expense", date: "2026-03-05", entity: { name: "Vodafone Italia SpA", vat_number: "08539010010" }, category: "Telefonia", description: "Fattura mobile", amount_net: 25, amount_vat: 5.5, amount_gross: 30.5, payments_list: [{ status: "paid" }] }],
+  ]);
+  // "documenti ricevuti in attesa": SdI invoices (agyo) and uploads by mail
+  const pending = new Map<number, any>([
+    [501, {
+      id: 501, type: "agyo", document_type: "expense", supplier_name: "Enel Energia S.p.A.", date: "2026-10-02 00:11:45", emission_date: "2026-10-01",
+      subject: "Fattura E-123 da Enel Energia S.p.A.", ei_number: "E-123", filename: "IT06655971007_a1b2.xml", attachment_url: "https://files.example/501.xml",
+      amount_net: 100, amount_vat: 22, amount_gross: 122, payments_list: [{ amount: 122, due_date: "2026-10-20", status: "not_paid" }],
+    }],
+    [502, {
+      id: 502, type: "agyo", document_type: "expense", entity: { name: "Vodafone Italia S.p.A.", vat_number: "IT08539010010" }, date: "2026-10-03",
+      subject: "Fattura mobile ottobre", invoice_number: "AM1/26", filename: "IT08539010010_c3d4.xml.p7m",
+      amount_net: 50, amount_vat: 11, amount_gross: 61, payments_list: [{ amount: 30, due_date: "2026-10-31" }, { amount: 30, due_date: "2026-11-30" }],
+    }],
+    [503, { id: 503, type: "mail", supplier_name: "Studio Rossi", date: "2026-09-30", subject: "Parcella", amount_net: 500, amount_vat: 110, amount_gross: 610 }],
+  ]);
 
   docs.set(26, {
     id: 26, type: "invoice", number: 26, numeration: "", date: "2026-10-02",
@@ -72,12 +90,39 @@ export function fakeApi() {
       Object.assign(f, body.data);
       return json({ data: f });
     }
-    if (p === "/c/1/received_documents")
-      return json({ current_page: 1, last_page: 1, data: [{ id: 1, date: "2026-02-01", entity: { name: "Aruba" }, description: "Hosting", amount_net: 100, amount_vat: 22, amount_gross: 122, payments_list: [{ status: "paid" }] }] });
+    if (p === "/c/1/received_documents" && method === "GET")
+      return json({ current_page: 1, last_page: 1, data: [...received.values()].filter((d) => d.type === (url.searchParams.get("type") ?? "expense")) });
+    if (p === "/c/1/received_documents" && method === "POST") {
+      const d = { ...body.data, id: nextId++, amount_gross: Math.round(((body.data.amount_net ?? 0) + (body.data.amount_vat ?? 0)) * 100) / 100 };
+      // the real API refuses payments that do not cover the gross total
+      const paid = (d.payments_list ?? []).reduce((s: number, x: any) => s + x.amount, 0);
+      if (Math.abs(paid - d.amount_gross) > 0.001) return json({ error: { message: "La somma dei pagamenti non corrisponde al totale" } }, 422);
+      if (body.pending_id) d.is_from_pending_expenses = true;
+      received.set(d.id, d);
+      return json({ data: d });
+    }
+    if (p === "/c/1/received_documents/pending" && method === "GET") {
+      const type = url.searchParams.get("type");
+      if (!type) return json({ error: { message: "type obbligatorio" } }, 422);
+      // like the live API: the type filter is ignored, counters tell the sources apart
+      return json({ current_page: 1, last_page: 1, data: [...pending.values()], counters: { agyo: 2, mail: 1, browser: 0 } });
+    }
+    if ((m = p.match(/^\/c\/1\/received_documents\/pending\/(\d+)$/))) {
+      const d = pending.get(Number(m[1]));
+      if (!d) return json({ error: { message: "Not found" } }, 404);
+      if (method === "DELETE") {
+        if (!state.pendingDelete) return json({ error: { message: "Method not allowed" } }, 405);
+        pending.delete(d.id);
+        return json(null);
+      }
+      return json({ data: d });
+    }
+    if (p === "/c/1/received_documents/info")
+      return json({ data: { categories_list: ["Telefonia", "Servizi ed edifici", "Server e hosting", "Spese legali e contabili"], payment_accounts_list: [{ id: 3 }] } });
     if (p === "/c/1/info/payment_accounts") return json({ data: [{ id: 3, name: "Banca" }] });
     if (p === "/c/1/entities/clients") return json({ current_page: 1, last_page: 1, total: 1, data: [{ id: 7, name: "Acme Srl" }] });
     return json({ error: { message: `fake: ${method} ${p} non gestito` } }, 404);
   }) as typeof fetch;
 
-  return { docs, calls, state, fetchImpl };
+  return { docs, received, pending, calls, state, fetchImpl };
 }

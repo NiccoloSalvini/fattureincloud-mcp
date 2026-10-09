@@ -32,6 +32,8 @@ if (tool) {
     ["receivables_report", {}],
     ["revenue_summary", {}],
     ["schedule_list", {}],
+    ["list_pending_received_documents", { source: "all" }],
+    ["recurring_expenses_report", {}],
   ];
   for (const [name, args] of steps) {
     const r = await call(name, args);

@@ -13,6 +13,7 @@ import { registerTaxTools } from "./tools/taxes.js";
 import { registerRegimeTools } from "./tools/regime.js";
 import { registerPlanningTools } from "./tools/planning.js";
 import { registerBankTools } from "./tools/bank.js";
+import { registerReceivedTools } from "./tools/received.js";
 
 export const VERSION: string = createRequire(import.meta.url)("../package.json").version;
 
@@ -41,6 +42,7 @@ export function createServer(client: FicClient, opts: { store?: ScheduleStore; t
   registerAdminTools(ctx);
   registerCrud(ctx, enabled);
   if (enabled.has("documents")) registerDocumentTools(ctx);
+  if (enabled.has("received")) registerReceivedTools(ctx);
   if (enabled.has("automation")) registerAutomationTools(ctx);
   if (enabled.has("reports")) registerInsightTools(ctx);
   if (enabled.has("taxes")) {
