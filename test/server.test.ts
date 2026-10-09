@@ -48,7 +48,7 @@ describe("tool catalogue", () => {
       "list_companies", "get_company_info", "lookup", "upload_attachment", "get_einvoice_xml", "duplicate_document", "bulk_duplicate",
       "transform_document", "join_documents", "mark_paid", "send_einvoice", "bulk_send_einvoice", "email_document", "bulk_email",
       "get_document_pdf", "schedule_create", "schedule_run_due", "receivables_report", "revenue_summary", "audit_documents",
-      "client_statement", "api_request", "recover_document", "list_pending_received_documents", "get_pending_received_document", "register_pending_received_documents", "suggest_expense_categories", "recurring_expenses_report", "tax_profile_set", "tax_estimate", "cashflow_forecast", "tax_deadlines_export", "accountant_package", "bank_reconcile", "bank_link_start",
+      "client_statement", "api_request", "recover_document", "list_pending_received_documents", "get_pending_received_document", "register_pending_received_documents", "suggest_expense_categories", "recurring_expenses_report", "tax_profile_set", "tax_estimate", "regime_simulator", "cashflow_forecast", "tax_deadlines_export", "accountant_package", "bank_reconcile", "bank_link_start",
     ]) expect(names).toContain(n);
     expect(names.length).toBeGreaterThan(70);
   });

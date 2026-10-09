@@ -79,7 +79,7 @@ Altri esempi in [`examples/`](examples/). Finché il pacchetto non è su npm, al
 | --- | --- |
 | `FIC_ACCESS_TOKEN` | obbligatoria |
 | `FIC_COMPANY_ID` | facoltativa: se il token vede una sola azienda viene scelta da sola, altrimenti ogni tool accetta `company_id` |
-| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 98: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
+| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 99: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
 | `FIC_QUOTA_RESERVE` | facoltativa: richieste orarie da lasciare libere (default 25). L'API concede 1.000 richieste all'ora e 40.000 al mese, condivise tra le app private; il server legge i contatori a ogni risposta e si ferma prima di esaurirli. `api_quota` mostra quante ne restano |
 | `FIC_MCP_DATA_DIR` | dove salvare le ricorrenze, default `~/.config/fattureincloud-mcp` |
 
@@ -126,7 +126,7 @@ fattureincloud-mcp run-due --dry-run
 
 ## Strumenti
 
-98 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
+99 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
 
 **documents**: documenti emessi
 - `list_/get_/create_/update_/delete_issued_document(s)`
@@ -155,6 +155,7 @@ fattureincloud-mcp run-due --dry-run
 **taxes**
 - `tax_profile_set`, `tax_profile_get`: coefficiente, aliquota, previdenza, versamenti reali
 - `tax_estimate`: scadenze del 30 giugno e del 30 novembre, totale annuo, quota da accantonare
+- `regime_simulator`: forfettario contro ordinario contro SRL sui tuoi numeri
 
 **planning**
 - `cashflow_forecast`: previsione di cassa e accantonamento mensile
@@ -276,6 +277,17 @@ Le banche italiane, Intesa compresa, non danno l'API PSD2 ai privati: è riserva
 5. Da lì basta `bank_reconcile` senza file: legge gli ultimi 90 giorni dal conto collegato.
 
 Le sessioni sono salvate in `bank-sessions.json`, leggibile solo dal tuo utente. La chiave resta sul tuo computer.
+
+## Simulatore di regime
+
+`regime_simulator` confronta, sugli stessi ricavi e costi, quanto resta in tasca con:
+- **forfettario**, al 5% o al 15%;
+- **ordinario**: ditta individuale, IRPEF a scaglioni 23/33/43% con detrazione per lavoro autonomo e addizionali;
+- **SRL unipersonale**: IRES 24%, IRAP 3,9% e dividendi al 26%. Il compenso dell'amministratore è scelto per pagare meno imposte, e sono inclusi i costi fissi della società.
+
+Indica anche il livello di ricavi oltre cui il forfettario smette di convenire.
+
+Di default usa la proiezione degli incassi dell'anno e i parametri del profilo fiscale. Se sei nei primi cinque anni, ripete il confronto con l'aliquota al 15% per mostrare cosa cambia dopo. I costi reali (`costs`) contano solo per ordinario e SRL. È un confronto su un anno a regime, utile per capire quando parlarne con il commercialista, non per decidere da soli.
 
 ## Pianificazione
 

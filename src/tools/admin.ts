@@ -8,7 +8,6 @@ const COMPANY_LOOKUPS = [
   "revenue_centers",
   "cost_centers",
   "product_categories",
-  "received_document_categories",
   "archive_categories",
 ] as const;
 const GLOBAL_LOOKUPS = ["templates", "currencies", "languages", "countries", "measures", "dn_causals"] as const;
@@ -68,7 +67,7 @@ export function registerAdminTools(ctx: Ctx) {
         "Tabelle di supporto: aliquote IVA (con id da usare nelle righe), metodi di pagamento, conti di saldo, centri di ricavo/costo, " +
         "categorie, modelli grafici, valute, lingue, paesi, unità di misura, causali DDT.",
       input: {
-        kind: z.enum([...COMPANY_LOOKUPS, ...GLOBAL_LOOKUPS]),
+        kind: z.enum([...COMPANY_LOOKUPS, "expense_categories", ...GLOBAL_LOOKUPS]),
         context: z.enum(["products", "issued_documents", "received_documents"]).optional().describe("Solo per product_categories"),
       },
       annotations: { readOnlyHint: true },
@@ -77,6 +76,7 @@ export function registerAdminTools(ctx: Ctx) {
       if ((GLOBAL_LOOKUPS as readonly string[]).includes(kind)) {
         return (await c.request("GET", `/info/${kind}`, { query: kind === "templates" ? { type: "all" } : undefined })).data;
       }
+      if (kind === "expense_categories") return (await c.get("/received_documents/info", { type: "expense" })).data?.categories_list ?? [];
       const query = kind === "product_categories" ? { context: context ?? "products" } : undefined;
       return (await c.get(`/info/${kind}`, query)).data;
     },
