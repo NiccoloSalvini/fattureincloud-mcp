@@ -48,7 +48,7 @@ describe("tool catalogue", () => {
       "list_companies", "get_company_info", "lookup", "upload_attachment", "get_einvoice_xml", "duplicate_document", "bulk_duplicate",
       "transform_document", "join_documents", "mark_paid", "send_einvoice", "bulk_send_einvoice", "email_document", "bulk_email",
       "get_document_pdf", "schedule_create", "schedule_run_due", "receivables_report", "revenue_summary", "audit_documents",
-      "client_statement", "api_request", "recover_document", "list_pending_received_documents", "get_pending_received_document", "register_pending_received_documents", "suggest_expense_categories", "recurring_expenses_report", "tax_profile_set", "tax_estimate", "regime_simulator", "cashflow_forecast", "tax_deadlines_export", "accountant_package", "bank_reconcile", "bank_link_start",
+      "client_statement", "api_request", "recover_document", "list_pending_received_documents", "get_pending_received_document", "register_pending_received_documents", "suggest_expense_categories", "recurring_expenses_report", "tax_profile_set", "tax_estimate", "regime_simulator", "preview_totals", "create_credit_note", "client_from_vat", "lookup_city", "stamp_duty_report", "quadro_lm", "list_price_lists", "receipts_monthly_totals", "update_payment_account", "create_vat_type", "cashflow_forecast", "tax_deadlines_export", "accountant_package", "bank_reconcile", "bank_link_start",
     ]) expect(names).toContain(n);
     expect(names.length).toBeGreaterThan(70);
   });
@@ -78,7 +78,7 @@ describe("documents", () => {
   it("dry_run creates nothing", async () => {
     const r = await call("duplicate_document", { source_id: 26, dry_run: true });
     expect(r.dry_run).toBe(true);
-    expect(api.calls.some((c) => c.method === "POST")).toBe(false);
+    expect(api.calls.some((c) => c.method === "POST" && c.path === "/c/1/issued_documents")).toBe(false);
   });
 
   it("send_einvoice does not send when the XML check fails", async () => {
@@ -313,5 +313,34 @@ describe("fatture passive", () => {
     const r = await call("recurring_expenses_report", {});
     expect(r).toMatchObject({ months: 12, recurring_suppliers: 0 });
     expect(api.calls.filter((c) => c.path === "/c/1/received_documents")).toHaveLength(1);
+  });
+});
+
+describe("0.5 tools", () => {
+  it("duplicate dry run includes Fatture in Cloud totals", async () => {
+    const r = await call("duplicate_document", { source_id: 26, dry_run: true });
+    expect(r.totals).toMatchObject({ amount_net: 1200, stamp_duty: 2 });
+  });
+
+  it("create_credit_note previews, then creates a linked credit note", async () => {
+    const preview = await call("create_credit_note", { invoice_id: 26, amount: 200, description: "Sconto" });
+    expect(preview.dry_run).toBe(true);
+    expect(preview.totals.amount_net).toBe(200);
+    const done = await call("create_credit_note", { invoice_id: 26, dry_run: false });
+    expect(done.created.type).toBe("credit_note");
+    const post = api.calls.filter((c) => c.method === "POST" && c.path === "/c/1/issued_documents").at(-1)!;
+    expect(post.body.data.ei_data).toMatchObject({ invoice_number: "26", invoice_date: "2026-10-02" });
+  });
+
+  it("client_from_vat uses VIES and normalises the city", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(JSON.stringify({ isValid: true, name: "ACME SRL", address: "VIA ROMA 1 \n00184 ROMA RM\n", vatNumber: "01234567890" }), { status: 200 })) as typeof fetch;
+    try {
+      const r = await call("client_from_vat", { vat_number: "IT01234567890" });
+      expect(r.client).toMatchObject({ name: "ACME SRL", address_city: "Roma", address_province: "RM", tax_code: "01234567890" });
+      expect(r.missing[0]).toMatch(/codice destinatario/);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });

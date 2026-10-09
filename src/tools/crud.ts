@@ -21,6 +21,8 @@ interface Resource {
   customList?: z.ZodRawShape;
   summarize?: (row: any) => unknown;
   createOptions?: boolean;
+  /** Settings resources are listed from /info/... and have no paginated list. */
+  listPath?: string;
 }
 
 export const RESOURCES: Resource[] = [
@@ -66,6 +68,33 @@ export const RESOURCES: Resource[] = [
   { toolset: "accounting", plural: "f24", singular: "f24", path: "/taxes", label: "modello F24" },
   { toolset: "accounting", plural: "archive_documents", singular: "archive_document", path: "/archive", label: "documento d'archivio" },
   {
+    toolset: "registry",
+    plural: "payment_accounts",
+    singular: "payment_account",
+    path: "/settings/payment_accounts",
+    listPath: "/info/payment_accounts",
+    label: "conto di saldo (banca, cassa, carta) su cui registrare incassi e pagamenti",
+    notes: "Campi: name, type (standard/bank), iban, sia, cuc, virtual.",
+  },
+  {
+    toolset: "registry",
+    plural: "payment_methods",
+    singular: "payment_method",
+    path: "/settings/payment_methods",
+    listPath: "/info/payment_methods",
+    label: "metodo di pagamento mostrato in fattura (es. bonifico con IBAN)",
+    notes: "Per la fattura elettronica imposta ei_payment_method (es. MP05 bonifico) e i dettagli (details: [{title, description}]).",
+  },
+  {
+    toolset: "registry",
+    plural: "vat_types",
+    singular: "vat_type",
+    path: "/settings/vat_types",
+    listPath: "/info/vat_types",
+    label: "aliquota IVA o natura di esenzione",
+    notes: "Per operazioni senza IVA serve ei_type (natura, es. N2.2) e una descrizione/riferimento normativo.",
+  },
+  {
     toolset: "accounting",
     plural: "cashbook_entries",
     singular: "cashbook_entry",
@@ -97,7 +126,7 @@ export function registerCrud(ctx: Ctx, enabled: Set<Toolset>) {
       },
       async (args, c) => {
         const { company_id, ...query } = args as any;
-        const res = await c.get(r.path, r.customList ? query : { fieldset: "basic", ...query });
+        const res = await c.get(r.listPath ?? r.path, r.customList ? query : { fieldset: "basic", ...query });
         return trimList(res, query.fieldset === "detailed" ? undefined : r.summarize);
       },
     );

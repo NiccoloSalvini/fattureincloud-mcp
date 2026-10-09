@@ -119,6 +119,11 @@ export function fakeApi() {
     }
     if (p === "/c/1/received_documents/info")
       return json({ data: { categories_list: ["Telefonia", "Servizi ed edifici", "Server e hosting", "Spese legali e contabili"], payment_accounts_list: [{ id: 3 }] } });
+    if (p === "/c/1/issued_documents/totals" && method === "POST") {
+      const net = (body.data.items_list ?? []).reduce((t: number, it: any) => t + (it.net_price ?? 0) * (it.qty ?? 1), 0);
+      return json({ data: { amount_net: net, amount_gross: net + (body.data.stamp_duty ?? 0), stamp_duty: body.data.stamp_duty ?? 0 } });
+    }
+    if (p === "/info/cities") return json({ data: [{ postal_code: "00184", city: "Roma", province: "RM" }] });
     if (p === "/c/1/info/payment_accounts") return json({ data: [{ id: 3, name: "Banca" }] });
     if (p === "/c/1/entities/clients") return json({ current_page: 1, last_page: 1, total: 1, data: [{ id: 7, name: "Acme Srl" }] });
     return json({ error: { message: `fake: ${method} ${p} non gestito` } }, 404);
