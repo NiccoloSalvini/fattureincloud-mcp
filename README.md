@@ -79,7 +79,7 @@ Altri esempi in [`examples/`](examples/). Finché il pacchetto non è su npm, al
 | --- | --- |
 | `FIC_ACCESS_TOKEN` | obbligatoria |
 | `FIC_COMPANY_ID` | facoltativa: se il token vede una sola azienda viene scelta da sola, altrimenti ogni tool accetta `company_id` |
-| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 99: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
+| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 123: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
 | `FIC_QUOTA_RESERVE` | facoltativa: richieste orarie da lasciare libere (default 25). L'API concede 1.000 richieste all'ora e 40.000 al mese, condivise tra le app private; il server legge i contatori a ogni risposta e si ferma prima di esaurirli. `api_quota` mostra quante ne restano |
 | `FIC_MCP_DATA_DIR` | dove salvare le ricorrenze, default `~/.config/fattureincloud-mcp` |
 
@@ -126,7 +126,7 @@ fattureincloud-mcp run-due --dry-run
 
 ## Strumenti
 
-99 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
+123 tool divisi in gruppi, attivabili con `FIC_TOOLSETS`. Il gruppo `admin` è sempre attivo.
 
 **documents**: documenti emessi
 - `list_/get_/create_/update_/delete_issued_document(s)`
@@ -136,6 +136,8 @@ fattureincloud-mcp run-due --dry-run
 - `mark_paid` / `mark_unpaid`
 - `email_document`
 - `verify_einvoice`, `send_einvoice` (con `dry_run`), `get_einvoice_xml`, `einvoice_rejection_reason`
+- `create_credit_note`: nota di credito totale o parziale, collegata alla fattura originale come richiede lo SdI
+- `preview_totals`: totali calcolati da Fatture in Cloud (rivalsa, IVA, ritenute, bollo, rate) senza creare il documento; li usa anche l'anteprima di `duplicate_document`
 - `get_document_pdf`: link o download
 - `upload_attachment`
 - `get_new_document_defaults`: prossimi numeri e valori predefiniti
@@ -156,6 +158,8 @@ fattureincloud-mcp run-due --dry-run
 - `tax_profile_set`, `tax_profile_get`: coefficiente, aliquota, previdenza, versamenti reali
 - `tax_estimate`: scadenze del 30 giugno e del 30 novembre, totale annuo, quota da accantonare
 - `regime_simulator`: forfettario contro ordinario contro SRL sui tuoi numeri
+- `stamp_duty_report`: bollo virtuale per trimestre (F24 codici 2521-2524); entra anche nelle scadenze
+- `quadro_lm`: valori del quadro LM della dichiarazione per un anno chiuso
 
 **planning**
 - `cashflow_forecast`: previsione di cassa e accantonamento mensile
@@ -167,7 +171,11 @@ fattureincloud-mcp run-due --dry-run
 - `bank_parse_statement`, `bank_formats`
 - `bank_link_start`, `bank_link_finish`, `bank_accounts`, `bank_list_banks`: collegamento PSD2 via Enable Banking
 
-**registry**: CRUD su `clients`, `suppliers`, `products`
+**registry**
+- CRUD su `clients`, `suppliers`, `products`, e sulle impostazioni `payment_accounts`, `payment_methods`, `vat_types`
+- `client_from_vat`: anagrafica da partita IVA via VIES, con città e provincia verificate
+- `lookup_city`: comuni da CAP o nome
+- `list_price_lists`, `get_price_list_items`
 
 **received**: fatture passive e spese
 - CRUD su `received_documents` (spese, note di credito passive)
@@ -176,7 +184,7 @@ fattureincloud-mcp run-due --dry-run
 - `suggest_expense_categories`: categoria proposta dallo storico del fornitore o da parole chiave
 - `recurring_expenses_report`: fornitori ricorrenti, prossima fattura attesa, totale annuo, aumenti di prezzo
 
-**accounting**: CRUD su `receipts` (corrispettivi), `f24`, `archive_documents`, `cashbook_entries` (prima nota)
+**accounting**: `receipts_monthly_totals`, e CRUD su `receipts` (corrispettivi), `f24`, `archive_documents`, `cashbook_entries` (prima nota)
 
 **admin**
 - `list_companies`, `get_company_info` (anche uso del piano)

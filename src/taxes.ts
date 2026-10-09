@@ -69,6 +69,8 @@ export interface TaxProfile {
   coefficient: number;
   /** 0.15, oppure 0.05 per i primi cinque anni di una nuova attività. */
   tax_rate: number;
+  /** Codice ATECO principale, per il quadro LM. */
+  ateco?: string;
   /** Primo anno di attività: prima non c'è nulla da versare. */
   start_year?: number;
   inps: InpsProfile;

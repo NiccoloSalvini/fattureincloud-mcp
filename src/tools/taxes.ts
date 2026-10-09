@@ -66,6 +66,7 @@ export function registerTaxTools(ctx: Ctx) {
         coefficient: z.number().gt(0).lte(1).optional().describe("Es. 0.78"),
         tax_rate: z.number().min(0).max(0.5).optional().describe("0.15 o 0.05"),
         start_year: z.number().int().optional().describe("Anno di apertura della partita IVA"),
+        ateco: z.string().optional().describe("Codice ATECO principale, es. 62.01.00"),
         inps: inpsSchema.optional(),
         planned_payments: z
           .array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), amount: z.number(), label: z.string() }))

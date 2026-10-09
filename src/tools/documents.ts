@@ -96,7 +96,10 @@ export function registerDocumentTools(ctx: Ctx) {
     },
     async ({ source_id, date, number, overrides, dry_run }, c) => {
       const r = await duplicateDocument(c, source_id, { date: date ?? todayISO(), number, overrides, dry_run });
-      return r.dry_run ? r : { source_id, created: summarizeDocument(r.document) };
+      if (!r.dry_run) return { source_id, created: summarizeDocument(r.document) };
+      // real totals computed by Fatture in Cloud (rivalsa, bollo, rate) for the preview
+      const totals = await c.post("/issued_documents/totals", { data: r.document }).then((x) => x.data).catch(() => undefined);
+      return { ...r, totals };
     },
   );
 
