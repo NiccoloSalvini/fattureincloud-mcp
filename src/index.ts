@@ -112,9 +112,10 @@ function formatReport(r: RunReport): string {
 
 function notify(title: string, message: string) {
   if (process.platform !== "darwin") return;
-  const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  // Fixed script, texts passed as arguments: nothing from the schedules ends up in AppleScript source.
+  const script = 'on run argv\ndisplay notification (item 1 of argv) with title "Fatture in Cloud" subtitle (item 2 of argv)\nend run';
   try {
-    execFileSync("osascript", ["-e", `display notification "${esc(message)}" with title "Fatture in Cloud" subtitle "${esc(title)}"`]);
+    execFileSync("osascript", ["-e", script, message, title]);
   } catch {
     /* notifications are best effort */
   }
