@@ -8,7 +8,7 @@ import { fetchIssued, upcomingTaxDeadlines } from "../finance.js";
 import { buildIcs } from "../ics.js";
 import { todayISO, upcoming } from "../schedules.js";
 import { loadProfile } from "../taxes.js";
-import { type Ctx, tool } from "./define.js";
+import { type Ctx, localPath, tool } from "./define.js";
 import { profilePath } from "./taxes.js";
 
 const MARKER = "[fattureincloud-mcp]";
@@ -120,6 +120,7 @@ export function registerPlanningTools(ctx: Ctx) {
       const out: Record<string, unknown> = { projected_revenue, deadlines };
 
       if (a.ics_path) {
+        localPath(ctx, "ics_path");
         const ics = buildIcs(
           deadlines.map((d) => ({
             uid: `tax-${d.date}@fattureincloud-mcp`,
@@ -176,13 +177,15 @@ export function registerPlanningTools(ctx: Ctx) {
         include_xml: z.boolean().default(true),
       },
     },
-    async (a, c) =>
-      buildAccountantPackage(c, {
+    async (a, c) => {
+      localPath(ctx, "accountant_package");
+      return buildAccountantPackage(c, {
         year: a.year ?? Number(todayISO().slice(0, 4)) - 1,
         output_dir: a.output_dir,
         include_pdf: a.include_pdf,
         include_xml: a.include_xml,
         profile: await loadProfile(profilePath(ctx)),
-      }),
+      });
+    },
   );
 }

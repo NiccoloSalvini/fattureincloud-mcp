@@ -6,7 +6,7 @@ import { DOCUMENT_TYPES } from "../client.js";
 import { duplicateDocument, emailDocument, joinDocuments, sendToSdi, setPaid, transformDocument } from "../actions.js";
 import { summarizeDocument } from "../reports.js";
 import { todayISO } from "../schedules.js";
-import { type Ctx, isoDate, tool, trimList } from "./define.js";
+import { type Ctx, isoDate, localPath, tool, trimList } from "./define.js";
 
 export const docType = z.enum(DOCUMENT_TYPES);
 
@@ -240,6 +240,7 @@ export function registerDocumentTools(ctx: Ctx) {
       const xml = await c.get(`/issued_documents/${id}/e_invoice/xml`, { include_attachment });
       const text = typeof xml === "string" ? xml : JSON.stringify(xml);
       if (!save_to) return text;
+      localPath(ctx, "save_to");
       return { saved: await saveFile(save_to, `fattura-${id}.xml`, text) };
     },
   );
@@ -267,6 +268,7 @@ export function registerDocumentTools(ctx: Ctx) {
       const d = await c.getDocument(id);
       const links = { pdf: d.url, delivery_note_pdf: d.dn_url ?? undefined, accompanying_invoice_pdf: d.ai_url ?? undefined, attachment: d.attachment_url ?? undefined };
       if (!save_to) return links;
+      localPath(ctx, "save_to");
       if (!d.url) throw new Error("Il documento non ha un PDF disponibile");
       const name = `${d.type}-${d.number ?? id}${(d.numeration ?? "").replace(/[^\w-]/g, "")}-${d.date}.pdf`;
       return { ...links, saved: await saveFile(save_to, name, await c.download(d.url)) };
@@ -285,6 +287,7 @@ export function registerDocumentTools(ctx: Ctx) {
       },
     },
     async ({ file_path, resource }, c) => {
+      localPath(ctx, "file_path");
       const file = expandHome(file_path);
       const bytes = new Uint8Array(await fs.readFile(file));
       const name = path.basename(file);

@@ -313,6 +313,16 @@ fattureincloud-mcp http --port 3000 --host 0.0.0.0
 
 Il server è stateless e non conserva credenziali. Ogni richiesta porta le proprie: `Authorization: Bearer <token>` (oppure `X-FIC-Token`) e, se serve, `X-FIC-Company`. L'endpoint è `POST /mcp`, il controllo di stato è `GET /health`. Se lo esponi su Internet, mettilo dietro HTTPS.
 
+### Dietro il gateway mcprush
+
+Con `MCPRUSH_TOKEN` impostato il server accetta solo le chiamate che portano lo stesso valore in `x-mcprush-token` e risponde 401 alle altre. Le credenziali del cliente arrivano come `X-Env-FIC_ACCESS_TOKEN` e `X-Env-FIC_COMPANY_ID`; le variabili d'ambiente del server non vengono mai usate al loro posto.
+
+In questa modalità il server è condiviso tra più clienti:
+
+- ogni cliente ha una cartella sua (profilo fiscale), che prende il nome da un hash del suo token;
+- i toolset `bank` e `automation` sono spenti, perché servono chiavi e un cron sul computer dell'utente;
+- i parametri che leggono o scrivono file (`save_to`, `file_path`, `ics_path`) e `accountant_package` rispondono con un errore.
+
 ## Sicurezza
 
 - Le azioni verso l'esterno (invio allo SdI, email) sono marcate come distruttive, quindi i client MCP chiedono conferma. Gli strumenti in blocco partono in anteprima.

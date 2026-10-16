@@ -11,6 +11,13 @@ export interface Ctx {
   server: McpServer;
   client: FicClient;
   store: ScheduleStore;
+  /** Remote server shared by many buyers (mcprush): no paths on its disk. */
+  hosted?: boolean;
+}
+
+/** Refuses a path argument when the server is not on the user's machine. */
+export function localPath(ctx: Ctx, what: string): void {
+  if (ctx.hosted) throw new Error(`${what} non disponibile: il server è remoto e non vede i file del tuo computer.`);
 }
 
 const companyArg = {

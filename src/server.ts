@@ -27,7 +27,7 @@ export function parseToolsets(value: string | undefined): Set<Toolset> {
   return new Set([...(wanted as Toolset[]), "admin"]);
 }
 
-export function createServer(client: FicClient, opts: { store?: ScheduleStore; toolsets?: Set<Toolset> } = {}) {
+export function createServer(client: FicClient, opts: { store?: ScheduleStore; toolsets?: Set<Toolset>; hosted?: boolean } = {}) {
   const server = new McpServer(
     { name: "fattureincloud-mcp", version: VERSION },
     {
@@ -37,7 +37,7 @@ export function createServer(client: FicClient, opts: { store?: ScheduleStore; t
         "solo con nota di credito. Per ripetere fatture usa duplicate_document o le ricorrenze (schedule_*), non ricostruirle a mano.",
     },
   );
-  const ctx: Ctx = { server, client, store: opts.store ?? new ScheduleStore() };
+  const ctx: Ctx = { server, client, store: opts.store ?? new ScheduleStore(), hosted: opts.hosted };
   const enabled = opts.toolsets ?? new Set(TOOLSETS);
 
   registerAdminTools(ctx);
