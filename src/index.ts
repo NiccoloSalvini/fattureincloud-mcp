@@ -24,6 +24,7 @@ Uso:
   fattureincloud-mcp uninstall-scheduler
 
 Variabili: FIC_ACCESS_TOKEN (obbligatoria), FIC_COMPANY_ID, FIC_TOOLSETS, FIC_MCP_DATA_DIR.
+MCPRUSH_TOKEN: in modalità http accetta solo le chiamate del gateway mcprush (header x-mcprush-token).
 Le variabili possono stare in ${envFile()}.`;
 
 function flag(args: string[], name: string): boolean {
