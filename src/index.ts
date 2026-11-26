@@ -7,6 +7,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { FicClient } from "./client.js";
 import { envFile, loadEnvFile } from "./env.js";
 import { runDue, type RunReport } from "./runner.js";
+import { installWindowsTask, uninstallWindowsTask, WINDOWS_TASK } from "./scheduler.js";
 import { ScheduleStore, dataDir, upcoming } from "./schedules.js";
 import { createServer, parseToolsets, VERSION } from "./server.js";
 
@@ -20,7 +21,8 @@ Uso:
                                          esegue le fatture ricorrenti in scadenza oggi
   fattureincloud-mcp schedules           elenca le fatture ricorrenti
   fattureincloud-mcp install-scheduler [--hour 8] [--minute 0]
-                                         esegue run-due ogni giorno (launchd su macOS, cron altrove)
+                                         esegue run-due ogni giorno (launchd su macOS, Utilità di
+                                         pianificazione su Windows, cron altrove)
   fattureincloud-mcp uninstall-scheduler
 
 Variabili: FIC_ACCESS_TOKEN (obbligatoria), FIC_COMPANY_ID, FIC_TOOLSETS, FIC_MCP_DATA_DIR.
@@ -146,13 +148,28 @@ async function installScheduler(hour: number, minute: number) {
     console.error(`Prima salva il token in ${envFile()}:\n  FIC_ACCESS_TOKEN=...\n  FIC_COMPANY_ID=...   (facoltativo)`);
     process.exit(1);
   }
+  const valid = (n: number, max: number) => Number.isInteger(n) && n >= 0 && n <= max;
+  if (!valid(hour, 23) || !valid(minute, 59)) {
+    console.error("--hour deve essere un intero tra 0 e 23, --minute tra 0 e 59.");
+    process.exit(1);
+  }
   const script = scriptPath();
-  if (script.includes("/_npx/")) {
+  if (script.replace(/\\/g, "/").includes("/_npx/")) {
     console.error("Stai usando npx: il percorso cambia a ogni versione. Installa prima con `npm i -g github:NiccoloSalvini/fattureincloud-mcp`.");
     process.exit(1);
   }
   const log = path.join(dataDir(), "run-due.log");
   await fs.mkdir(dataDir(), { recursive: true });
+  const time = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+
+  if (process.platform === "win32") {
+    installWindowsTask({ node: process.execPath, script, log, hour, minute });
+    console.log(
+      `Installato: ogni giorno alle ${time}, se hai effettuato l'accesso a Windows (un'esecuzione saltata viene recuperata appena possibile).\n` +
+        `  attività: «${WINDOWS_TASK}» nell'Utilità di pianificazione\n  log: ${log}\n  token letto da: ${envFile()}`,
+    );
+    return;
+  }
 
   if (process.platform === "darwin") {
     const plist = path.join(os.homedir(), "Library", "LaunchAgents", `${LAUNCHD_LABEL}.plist`);
@@ -184,7 +201,7 @@ async function installScheduler(hour: number, minute: number) {
     }
     execFileSync("launchctl", ["bootstrap", `gui/${process.getuid!()}`, plist]);
     console.log(
-      `Installato: ogni giorno alle ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} (se il Mac è in stop, al risveglio; le scadenze perse vengono recuperate alla prima esecuzione).\n` +
+      `Installato: ogni giorno alle ${time} (se il Mac è in stop, al risveglio; le scadenze perse vengono recuperate alla prima esecuzione).\n` +
         `  job: ${plist}\n  log: ${log}\n  token letto da: ${envFile()}`,
     );
     return;
@@ -195,6 +212,10 @@ async function installScheduler(hour: number, minute: number) {
 }
 
 async function uninstallScheduler() {
+  if (process.platform === "win32") {
+    console.log(uninstallWindowsTask() ? "Pianificazione rimossa." : "Nessuna pianificazione da rimuovere.");
+    return;
+  }
   if (process.platform !== "darwin") {
     console.log("Rimuovi la riga `run-due` con `crontab -e`.");
     return;
