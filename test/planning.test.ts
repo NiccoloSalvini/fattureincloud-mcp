@@ -57,7 +57,7 @@ describe("ics", () => {
       { name: "Test", now: new Date("2026-10-08T10:00:00Z") },
     );
     expect(ics).toContain("DTSTART;VALUE=DATE:20261130\r\nDTEND;VALUE=DATE:20261201");
-    expect(ics).toContain("SUMMARY:F24: 1.234\\,56 €\; acconto");
+    expect(ics).toContain("SUMMARY:F24: 1.234\\,56 €\\; acconto");
     expect(ics).toContain("TRIGGER:-P7D");
     for (const line of ics.split("\r\n")) expect(Buffer.byteLength(line)).toBeLessThanOrEqual(75);
   });

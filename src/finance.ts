@@ -5,7 +5,7 @@ import type { FicClient, IssuedDocument } from "./client.js";
 import { daysBetween } from "./copy.js";
 import { collectedByYear } from "./reports.js";
 import { todayISO } from "./schedules.js";
-import { taxReport, type TaxProfile } from "./taxes.js";
+import { assertBusinessOpen, taxReport, type TaxProfile } from "./taxes.js";
 import { stampDutyQuarters } from "./extras.js";
 
 export async function fetchIssued(
@@ -48,6 +48,7 @@ export async function estimateTaxes(
   year: number,
   opts: { projection?: Projection; revenue_estimate?: number; today?: string } = {},
 ) {
+  assertBusinessOpen(profile, year);
   return (await estimateWithDocs(c, profile, year, opts)).report;
 }
 
@@ -58,7 +59,7 @@ async function estimateWithDocs(
   opts: { projection?: Projection; revenue_estimate?: number; today?: string } = {},
 ) {
   const today = opts.today ?? todayISO();
-  const from = Math.max(profile.start_year ?? year - 3, year - 3);
+  const from = Math.min(year, Math.max(profile.start_year ?? year - 3, year - 3));
   const docs = await fetchIssued(c, ["invoice", "credit_note"], `date >= '${from - 1}-01-01' and date <= '${year}-12-31'`);
   const revenue = collectedByYear(docs);
   const isCurrent = today.startsWith(String(year));

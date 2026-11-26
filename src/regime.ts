@@ -43,7 +43,7 @@ export const REGIME_DEFAULTS: Omit<RegimeParams, "revenue" | "costs"> = {
   coefficient: 0.78,
   forfettario_rate: 0.15,
   inps_rate: 0.2607,
-  inps_max_income: 120_607,
+  inps_max_income: 122_295,
   irpef_brackets: [
     { upTo: 28_000, rate: 0.23 },
     { upTo: 50_000, rate: 0.33 },

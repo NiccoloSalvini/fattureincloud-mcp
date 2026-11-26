@@ -4,7 +4,7 @@ export function fakeApi() {
   const calls: { method: string; path: string; body?: any }[] = [];
   let nextId = 100;
   let nextNumber = 27;
-  const state = { verifyOk: true, pendingDelete: true, emails: [] as any[], sent: [] as number[], f24: [] as any[] };
+  const state = { verifyOk: true, pendingDelete: true, receivedDown: false, emails: [] as any[], sent: [] as number[], f24: [] as any[] };
   const received = new Map<number, any>([
     [1, { id: 1, type: "expense", date: "2026-02-01", entity: { name: "Aruba" }, category: "Software", description: "Hosting", amount_net: 100, amount_vat: 22, amount_gross: 122, payments_list: [{ status: "paid" }] }],
     [2, { id: 2, type: "expense", date: "2026-03-05", entity: { name: "Vodafone Italia SpA", vat_number: "08539010010" }, category: "Telefonia", description: "Fattura mobile", amount_net: 25, amount_vat: 5.5, amount_gross: 30.5, payments_list: [{ status: "paid" }] }],
@@ -90,6 +90,7 @@ export function fakeApi() {
       Object.assign(f, body.data);
       return json({ data: f });
     }
+    if (p === "/c/1/received_documents" && method === "GET" && state.receivedDown) return json({ error: { message: "Servizio non disponibile" } }, 503);
     if (p === "/c/1/received_documents" && method === "GET")
       return json({ current_page: 1, last_page: 1, data: [...received.values()].filter((d) => d.type === (url.searchParams.get("type") ?? "expense")) });
     if (p === "/c/1/received_documents" && method === "POST") {

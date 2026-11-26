@@ -1,18 +1,30 @@
 /**
  * Streamable HTTP transport, stateless: every request carries its own
  * credentials (Authorization: Bearer <token> or X-FIC-Token, plus optional
- * X-FIC-Company), so the server stores none.
+ * X-FIC-Company), so the server stores none. A token set in the server's
+ * environment is never lent to callers, and local-file tools are not offered.
  */
 import http from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { FicClient } from "./client.js";
 import { createServer } from "./server.js";
 import type { Toolset } from "./tools/define.js";
-import { ScheduleStore } from "./schedules.js";
 
 function header(req: http.IncomingMessage, name: string): string | undefined {
   const v = req.headers[name.toLowerCase()];
   return Array.isArray(v) ? v[0] : v;
+}
+
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** Browsers send Origin: refuse web pages from elsewhere (DNS rebinding). */
+function isForeignOrigin(origin: string | undefined): boolean {
+  if (origin === undefined) return false;
+  try {
+    return !LOCAL_HOSTNAMES.has(new URL(origin).hostname);
+  } catch {
+    return true;
+  }
 }
 
 async function readJson(req: http.IncomingMessage): Promise<unknown> {
@@ -34,7 +46,6 @@ function sendError(res: http.ServerResponse, status: number, message: string) {
 
 export function startHttp(opts: { port: number; host: string; toolsets: Set<Toolset>; path?: string }) {
   const mcpPath = opts.path ?? "/mcp";
-  const store = new ScheduleStore();
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (url.pathname === "/health") {
@@ -42,17 +53,18 @@ export function startHttp(opts: { port: number; host: string; toolsets: Set<Tool
       return res.end('{"ok":true}');
     }
     if (url.pathname !== mcpPath) return sendError(res, 404, "Not found");
+    if (isForeignOrigin(header(req, "origin"))) return sendError(res, 403, "Origin non consentita");
     if (req.method !== "POST") return sendError(res, 405, "Usa POST (server stateless)");
 
     const auth = header(req, "authorization");
-    const token = header(req, "x-fic-token") ?? (auth?.startsWith("Bearer ") ? auth.slice(7) : undefined) ?? process.env.FIC_ACCESS_TOKEN;
+    const token = header(req, "x-fic-token") ?? (auth?.startsWith("Bearer ") ? auth.slice(7) : undefined);
     if (!token) return sendError(res, 401, "Manca il token: header Authorization: Bearer <token> o X-FIC-Token");
     const company = header(req, "x-fic-company") ?? process.env.FIC_COMPANY_ID;
 
     try {
       const body = await readJson(req);
       const client = new FicClient({ token, companyId: company ? Number(company) : undefined, baseUrl: process.env.FIC_API_BASE });
-      const mcp = createServer(client, { store, toolsets: opts.toolsets });
+      const mcp = createServer(client, { toolsets: opts.toolsets, remote: true });
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       res.on("close", () => {
         transport.close();

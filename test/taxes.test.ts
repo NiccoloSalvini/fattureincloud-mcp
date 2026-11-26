@@ -71,6 +71,20 @@ describe("other regimes and overrides", () => {
     expect(ys.get(2025)!.contributions_due).toBe(7488);
   });
 
+  it("applies the gestione separata cap of each year, unless the profile sets one", () => {
+    const ys = computeYears(gs, { 2025: 200_000, 2026: 200_000, 2027: 200_000 }, 2025, 2027);
+    const due = (cap: number) => Math.round(cap * 0.2607 * 100) / 100;
+    expect([2025, 2026, 2027].map((y) => ys.get(y)!.contributions_due)).toEqual([due(120_607), due(122_295), due(122_295)]);
+    const fixed = computeYears({ ...gs, inps: { type: "gestione_separata", rate: 0.2607, max_income: 50_000 } }, { 2026: 200_000 }, 2026, 2026);
+    expect(fixed.get(2026)!.contributions_due).toBe(due(50_000));
+  });
+
+  it("a year before the business opened is empty, not a crash", () => {
+    const rep = taxReport({ ...gs, start_year: 2027 }, {}, 2025);
+    expect(rep.year_summary).toMatchObject({ year: 2025, tax_due: 0, contributions_due: 0 });
+    expect(rep.deadlines).toEqual([]);
+  });
+
   it("overrides replace modelled payments", () => {
     const p = { ...gs, overrides: { "2025": { contributions_paid: 5000, tax_advances_paid: 3000 } } };
     const y = computeYears(p, { 2024: 30000, 2025: 40000 }, 2024, 2025).get(2025)!;
