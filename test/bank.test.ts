@@ -2,7 +2,7 @@ import { generateKeyPairSync, createVerify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { intesaXlsx } from "./fixtures.js";
 import { EnableBanking, mapEbTransaction, signJwt } from "../src/bank/enablebanking.js";
-import { mentionsInvoiceNumber, nameTokens, openItems, reconcile } from "../src/bank/match.js";
+import { mentionsInvoiceNumber, nameTokens, openItems, paidItems, reconcile } from "../src/bank/match.js";
 import { parseAmount, parseDate, parseStatement } from "../src/bank/parse.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -125,6 +125,69 @@ describe("matching", () => {
     const m = reconcile([{ date: "2026-10-05", amount: 1200, description: "ACME SRL fattura 5", bank: "x" }], openItems(docs as any)).matches[0];
     expect(m.confidence).toBe("high");
     expect(m.reasons[0]).toMatch(/inferiore di 2.00/);
+  });
+});
+
+describe("transfers already registered", () => {
+  const invoice = (id: number, date: string, payment: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    doc({ id, number: id, date, payments_list: [{ amount: 1000, status: "not_paid", due_date: date, ...payment }], ...extra });
+  const paidOn = (day: string) => ({ status: "paid", paid_date: day });
+  const transfer = (date: string, description: string) => ({ date, amount: 1000, description, bank: "x" });
+  const run = (txs: ReturnType<typeof transfer>[], docs: any[]) => reconcile(txs, openItems(docs), paidItems(docs));
+
+  it("a second run does not pay another invoice with the same transfer", () => {
+    const txs = [transfer("2026-10-05", "Bonifico Acme saldo fattura 1")];
+    const second = invoice(2, "2026-10-01", {});
+    expect(run(txs, [invoice(1, "2026-09-01", {}), second]).matches.map((m) => m.item.document_id)).toEqual([1]);
+
+    const again = run(txs, [invoice(1, "2026-09-01", paidOn("2026-10-05")), second]);
+    expect(again.matches).toEqual([]);
+    expect(again.unmatched_credits).toEqual([]);
+    expect(again.already_recorded.map((r) => r.item.document_id)).toEqual([1]);
+  });
+
+  it("same day and amount is enough, without the invoice number", () => {
+    const r = run([transfer("2026-10-05", "ACME SRL")], [invoice(1, "2026-09-01", paidOn("2026-10-05")), invoice(2, "2026-10-01", {})]);
+    expect(r.matches).toEqual([]);
+    expect(r.already_recorded).toHaveLength(1);
+  });
+
+  it("recognises a collection registered later with another date, if the number is cited", () => {
+    const r = run([transfer("2026-10-05", "Acme fattura 1")], [invoice(1, "2026-09-01", paidOn("2026-10-20")), invoice(2, "2026-10-01", {})]);
+    expect(r.matches).toEqual([]);
+    expect(r.already_recorded).toHaveLength(1);
+  });
+
+  it("asks for confirmation when it may have been registered with another date", () => {
+    const [m] = run([transfer("2026-10-05", "ACME SRL")], [invoice(1, "2026-09-01", paidOn("2026-10-20")), invoice(2, "2026-10-01", {})]).matches;
+    expect(m.confidence).toBe("medium");
+    expect(m.reasons.at(-1)).toMatch(/possibile doppione/);
+  });
+
+  it("last month's collection does not hold back this month's transfer", () => {
+    const [m] = run([transfer("2026-10-05", "ACME SRL")], [invoice(1, "2026-09-01", paidOn("2026-09-05")), invoice(2, "2026-10-01", {})]).matches;
+    expect(m).toMatchObject({ confidence: "high", item: { document_id: 2 } });
+  });
+
+  it("each registered amount explains one transfer only", () => {
+    const txs = [transfer("2026-10-05", "ACME SRL"), transfer("2026-10-05", "ACME SRL")];
+    const r = run(txs, [invoice(1, "2026-09-01", paidOn("2026-10-05")), invoice(2, "2026-10-01", {})]);
+    expect(r.already_recorded).toHaveLength(1);
+    expect(r.matches).toEqual([expect.objectContaining({ confidence: "high" })]);
+  });
+
+  it("another client's collection on the same day does not hide a better match", () => {
+    const other = invoice(1, "2026-09-01", paidOn("2026-10-05"), { entity: { name: "Beta Spa" } });
+    const r = run([transfer("2026-10-05", "ACME SRL")], [other, invoice(2, "2026-10-01", {})]);
+    expect(r.matches.map((m) => m.item.document_id)).toEqual([2]);
+    expect(r.already_recorded).toEqual([]);
+  });
+
+  it("one transfer covering two installments is recognised as a whole", () => {
+    const half = { amount: 500, status: "paid", paid_date: "2026-10-05" };
+    const r = run([transfer("2026-10-05", "ACME SRL")], [doc({ id: 1, number: 1, date: "2026-09-01", payments_list: [half, half] }), invoice(2, "2026-10-01", {})]);
+    expect(r.matches).toEqual([]);
+    expect(r.already_recorded[0].item.installments).toEqual([0, 1]);
   });
 });
 

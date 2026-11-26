@@ -2,7 +2,7 @@ import path from "node:path";
 import { z } from "zod";
 import { todayISO } from "../schedules.js";
 import { estimateTaxes } from "../finance.js";
-import { DEFAULTS, loadProfile, saveProfile, type TaxProfile } from "../taxes.js";
+import { DEFAULTS, GESTIONE_SEPARATA_MAX, loadProfile, saveProfile, type TaxProfile } from "../taxes.js";
 import { type Ctx, tool } from "./define.js";
 
 const yearOverride = z.object({
@@ -17,7 +17,10 @@ const inpsSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("gestione_separata"),
     rate: z.number().optional().describe(`Default ${DEFAULTS.gestione_separata_rate}`),
-    max_income: z.number().optional().describe(`Massimale, default ${DEFAULTS.gestione_separata_max}`),
+    max_income: z
+      .number()
+      .optional()
+      .describe(`Massimale; se omesso quello dell'anno (${Object.entries(GESTIONE_SEPARATA_MAX).map(([y, v]) => `${y}: ${v}`).join(", ")})`),
   }),
   z.object({
     type: z.enum(["artigiani", "commercianti"]),

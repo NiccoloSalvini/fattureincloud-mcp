@@ -4,7 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 import { markInstallmentsPaid } from "../actions.js";
 import { BankLinkStore, ebConfigFromEnv, EnableBanking, mapEbTransaction } from "../bank/enablebanking.js";
-import { atLeast, type Confidence, openItems, reconcile } from "../bank/match.js";
+import { atLeast, type Confidence, openItems, paidItems, reconcile } from "../bank/match.js";
 import { type BankTransaction, parseStatement, PROFILES } from "../bank/parse.js";
 import { addDays } from "../copy.js";
 import { fetchIssued } from "../finance.js";
@@ -104,7 +104,8 @@ export function registerBankTools(ctx: Ctx) {
       description:
         "Riconciliazione bancaria: abbina gli accrediti dell'estratto conto (file o conto collegato) alle fatture aperte per importo, numero fattura " +
         "in causale, P.IVA e nome del cliente, e segna come pagate le rate abbinate con la data dell'accredito. dry_run è TRUE per default: " +
-        "mostra le proposte con il livello di confidenza; rilancia con dry_run=false per registrare quelle ≥ min_confidence.",
+        "mostra le proposte con il livello di confidenza; rilancia con dry_run=false per registrare quelle ≥ min_confidence. " +
+        "Gli accrediti che risultano già registrati come incassi sono esclusi ed elencati in already_recorded.",
       input: {
         file_path: z.string().optional().describe("Estratto conto esportato; ometti per usare il conto collegato con Enable Banking"),
         bank: z.string().optional(),
@@ -132,7 +133,7 @@ export function registerBankTools(ctx: Ctx) {
       const earliest = txs[0]?.date ?? todayISO();
       // invoices up to 2 years before the first transaction can still be paid late
       const docs = await fetchIssued(c, ["invoice"], `date >= '${Number(earliest.slice(0, 4)) - 2}-01-01'`);
-      const result = reconcile(txs, openItems(docs));
+      const result = reconcile(txs, openItems(docs), paidItems(docs));
       const min = a.min_confidence as Confidence;
 
       const applied: unknown[] = [];
@@ -159,6 +160,12 @@ export function registerBankTools(ctx: Ctx) {
         ...summarize(txs),
         matches: result.matches.map(view),
         applied: a.dry_run ? undefined : applied,
+        already_recorded: result.already_recorded.map(({ transaction: t, item }) => ({
+          date: t.date,
+          amount: t.amount,
+          description: t.description.slice(0, 160),
+          fattura: { id: item.document_id, document: item.document, paid_date: item.paid_date },
+        })),
         unmatched_credits: result.unmatched_credits.map((t) => ({ date: t.date, amount: t.amount, description: t.description.slice(0, 160) })),
         still_open_invoices: result.still_open.length,
         next: a.dry_run

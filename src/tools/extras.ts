@@ -4,7 +4,7 @@ import { buildCreditNote, clientFromVies, quadroLM, stampDutyQuarters, VIES_TEMP
 import { fetchIssued } from "../finance.js";
 import { collectedByYear, summarizeDocument } from "../reports.js";
 import { todayISO } from "../schedules.js";
-import { computeYears, loadProfile } from "../taxes.js";
+import { assertBusinessOpen, computeYears, loadProfile } from "../taxes.js";
 import { type Ctx, isoDate, tool } from "./define.js";
 
 const VIES = "https://ec.europa.eu/taxation_customs/vies/rest-api/ms";
@@ -175,6 +175,7 @@ export function registerExtraTools(ctx: Ctx, enabled: Set<string>) {
         const profile = await loadProfile(path.join(ctx.store.dir, "tax-profile.json"));
         if (!profile) throw new Error("Profilo fiscale non impostato: usa prima tax_profile_set.");
         const y = year ?? Number(todayISO().slice(0, 4)) - 1;
+        assertBusinessOpen(profile, y);
         const from = Math.max(profile.start_year ?? y - 3, y - 3);
         const docs = await fetchIssued(c, ["invoice", "credit_note"], `date >= '${from - 1}-01-01' and date <= '${y}-12-31'`);
         const years = computeYears(profile, collectedByYear(docs), from, y);

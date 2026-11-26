@@ -36,15 +36,19 @@ export async function executeSchedule(
     run.document_id = dup.document.id ?? undefined;
     run.number = dup.document.number;
     const notes: string[] = [];
+    // the customer must not receive an invoice that failed the SdI check
+    let rejected = false;
     if (s.action === "create_and_send_sdi" && run.document_id) {
       const sdi = await sendToSdi(c, run.document_id);
       run.sent_sdi = sdi.sent;
       if (!sdi.verified) {
+        rejected = true;
         run.status = "error";
         notes.push(`Creata ma NON inviata allo SdI: verifica XML fallita: ${JSON.stringify(sdi.detail)}`);
+        if (s.email?.enabled) notes.push("Email al cliente non inviata");
       }
     }
-    if (s.email?.enabled && run.document_id) {
+    if (s.email?.enabled && run.document_id && !rejected) {
       try {
         await emailDocument(c, run.document_id, s.email);
         run.emailed = true;

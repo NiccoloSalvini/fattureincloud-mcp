@@ -79,7 +79,7 @@ Altri esempi in [`examples/`](examples/). Finché il pacchetto non è su npm, al
 | --- | --- |
 | `FIC_ACCESS_TOKEN` | obbligatoria |
 | `FIC_COMPANY_ID` | facoltativa: se il token vede una sola azienda viene scelta da sola, altrimenti ogni tool accetta `company_id` |
-| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 123: con meno gruppi il modello sceglie meglio e consuma meno contesto. |
+| `FIC_TOOLSETS` | facoltativa: carica solo alcuni gruppi di tool, es. `documents,automation,reports,taxes,bank` (vedi sotto). I tool sono 123: con meno gruppi il modello sceglie meglio e consuma meno contesto. Se escludi anche un solo gruppo, `api_request` accetta solo `GET`. |
 | `FIC_QUOTA_RESERVE` | facoltativa: richieste orarie da lasciare libere (default 25). L'API concede 1.000 richieste all'ora e 40.000 al mese, condivise tra le app private; il server legge i contatori a ogni risposta e si ferma prima di esaurirli. `api_quota` mostra quante ne restano |
 | `FIC_MCP_DATA_DIR` | dove salvare le ricorrenze, default `~/.config/fattureincloud-mcp` |
 
@@ -105,7 +105,7 @@ Fatture in Cloud non ha la pianificazione, quindi le ricorrenze vivono sul tuo c
    fattureincloud-mcp install-scheduler --hour 8
    ```
 
-   Su macOS crea un LaunchAgent che gira ogni mattina e manda una notifica con l'esito. Se il Mac era in stop parte al risveglio; se era spento, la fattura viene creata alla prima esecuzione successiva. Su Linux stampa la riga da mettere in crontab.
+   Su macOS crea un LaunchAgent che gira ogni mattina e manda una notifica con l'esito. Se il Mac era in stop parte al risveglio; se era spento, la fattura viene creata alla prima esecuzione successiva. Su Windows crea l'attività «fattureincloud-mcp run-due» nell'Utilità di pianificazione: gira se hai effettuato l'accesso (può comparire per un attimo una finestra), recupera appena possibile un'esecuzione saltata e scrive l'esito in `run-due.log`, senza notifiche. Su Linux stampa la riga da mettere in crontab.
 
 Comandi utili:
 
@@ -122,7 +122,7 @@ fattureincloud-mcp run-due --dry-run
 **Garanzie:**
 - Ogni ricorrenza produce al massimo un documento per scadenza: la prossima data viene salvata *prima* di creare la fattura, e un lock impedisce esecuzioni sovrapposte tra il job e Claude. Se qualcosa va storto la fattura manca, non viene duplicata, e l'errore resta nello storico.
 - Se il computer è rimasto spento per più periodi, al riavvio viene creato un solo documento, datato oggi, e non uno per ogni periodo arretrato. La numerazione resta così in ordine cronologico.
-- Se la verifica dell'XML fallisce, la fattura viene creata ma non inviata, e l'errore viene segnalato.
+- Se la verifica dell'XML fallisce, la fattura viene creata ma non inviata, né allo SdI né per email, e l'errore viene segnalato.
 
 ## Strumenti
 
@@ -191,7 +191,7 @@ fattureincloud-mcp run-due --dry-run
 - `api_quota`: richieste API rimaste nell'ora e nel mese
 - `lookup`: aliquote IVA, metodi di pagamento, conti, centri di costo e ricavo, categorie, modelli, valute, paesi…
 - `list_sent_emails`
-- `api_request`: qualsiasi altro endpoint dell'[API v2](https://developers.fattureincloud.it/api-reference/)
+- `api_request`: qualsiasi altro endpoint dell'[API v2](https://developers.fattureincloud.it/api-reference/); in sola lettura se `FIC_TOOLSETS` esclude dei gruppi
 
 I filtri `q` usano la sintassi di Fatture in Cloud, ad esempio `date >= '2026-01-01' and entity.name like '%rossi%'` oppure `amount_gross > 1000`.
 
@@ -217,7 +217,7 @@ Il calcolo:
 
 Per l'anno in corso gli incassi vengono proiettati a fine anno, oppure usi solo quelli avvenuti (`projection: "to_date"`) o una tua stima (`revenue_estimate`). Se hai versato importi diversi da quelli calcolati, o hai incassi fuori da Fatture in Cloud, inseriscili per anno in `overrides`: la stima diventa esatta. Il risultato include anche la percentuale da accantonare su ogni incasso e l'avviso quando gli acconti superano l'imposta, caso in cui conviene il metodo previsionale.
 
-È una stima per pianificare la liquidità, non un calcolo da dichiarazione: aliquote e massimali cambiano ogni anno (i default sono quelli del 2025 e si possono modificare nel profilo), e prima di pagare conviene il controllo del commercialista.
+È una stima per pianificare la liquidità, non un calcolo da dichiarazione: aliquote e massimali cambiano ogni anno (per la gestione separata i default sono 26,07% e massimale di 120.607 € nel 2025 e 122.295 € nel 2026, circolare INPS n. 8/2026; dopo il 2026 resta l'ultimo noto; si possono modificare nel profilo), e prima di pagare conviene il controllo del commercialista.
 
 ## Fatture passive (regime ordinario)
 
@@ -248,7 +248,7 @@ Nel **regime forfettario** le fatture d'acquisto non hanno effetto fiscale (nien
 | Nome del cliente nella causale | fino a +25 |
 | Pagamento datato prima della fattura | −40 |
 
-La confidenza è *alta* da 75 punti, *media* da 60, *bassa* sotto. Ogni accredito va al massimo a una fattura. Se due fatture hanno lo stesso punteggio, l'abbinamento scende a *medio* e viene segnalato come ambiguo. Si parte sempre in anteprima: con `dry_run: false` vengono registrati solo gli abbinamenti con confidenza almeno `min_confidence` (di default `high`). Rilanciarlo sullo stesso file non registra due volte lo stesso incasso.
+La confidenza è *alta* da 75 punti, *media* da 60, *bassa* sotto. Ogni accredito va al massimo a una fattura. Se due fatture hanno lo stesso punteggio, l'abbinamento scende a *medio* e viene segnalato come ambiguo. Si parte sempre in anteprima: con `dry_run: false` vengono registrati solo gli abbinamenti con confidenza almeno `min_confidence` (di default `high`). Rilanciarlo sullo stesso file non registra due volte lo stesso incasso: gli accrediti che corrispondono a un incasso già registrato (stessa data, oppure numero fattura in causale e date vicine) sono esclusi ed elencati in `already_recorded`. Se un incasso con lo stesso importo e cliente risulta registrato in una data vicina ma diversa, la confidenza scende a *media*. Il controllo si basa su importi e date: se segni gli incassi a mano, usa la data dell'accredito.
 
 ### Da file (qualsiasi banca)
 
@@ -312,6 +312,8 @@ fattureincloud-mcp http --port 3000 --host 0.0.0.0
 ```
 
 Il server è stateless e non conserva credenziali. Ogni richiesta porta le proprie: `Authorization: Bearer <token>` (oppure `X-FIC-Token`) e, se serve, `X-FIC-Company`. L'endpoint è `POST /mcp`, il controllo di stato è `GET /health`. Se lo esponi su Internet, mettilo dietro HTTPS.
+
+Un `FIC_ACCESS_TOKEN` impostato sul server non viene usato per chi chiama senza token. Le richieste con un `Origin` non locale sono rifiutate. In modalità HTTP non ci sono gli strumenti che usano i file del server: gruppi `taxes`, `planning` e `bank`, ricorrenze `schedule_*`, `upload_attachment` e il parametro `save_to`. Per usarli, avvia il server su stdio.
 
 ## Sicurezza
 

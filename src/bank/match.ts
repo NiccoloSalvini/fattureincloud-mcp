@@ -10,8 +10,9 @@
  *   payment dated before the invoice                                   −40
  * Confidence: high ≥ 75, medium ≥ 60, low otherwise (amount only).
  * Assignment is greedy on score, one transfer ↔ one installment set.
+ * Transfers matching a collection already registered are set aside first.
  */
-import type { IssuedDocument } from "../client.js";
+import type { IssuedDocument, Json } from "../client.js";
 import { daysBetween } from "../copy.js";
 import type { BankTransaction } from "./parse.js";
 
@@ -69,29 +70,55 @@ export function mentionsInvoiceNumber(desc: string, number: number | null, date:
   return patterns.some((p) => p.test(d));
 }
 
+/** An amount already registered as collected on an invoice. */
+export interface PaidItem extends OpenItem {
+  paid_date: string;
+}
+
+type Installment = { p: Json; i: number };
+
+/** One item per installment, plus their sum when there are several. */
+function installmentItems(d: IssuedDocument, list: Installment[]): OpenItem[] {
+  const base = {
+    document_id: d.id!,
+    document: `${d.number ?? "?"}${d.numeration ?? ""} del ${d.date}`,
+    number: d.number ?? null,
+    date: d.date ?? "",
+    client: d.entity?.name ?? "",
+    vat_number: d.entity?.vat_number?.replace(/^IT/i, "") || undefined,
+    tax_code: d.entity?.tax_code || undefined,
+  };
+  const out: OpenItem[] = list.map(({ p, i }) => ({ ...base, installments: [i], amount: p.amount ?? 0, due_date: p.due_date ?? base.date }));
+  if (list.length > 1) {
+    out.push({
+      ...base,
+      installments: list.map((o) => o.i),
+      amount: Math.round(list.reduce((s, o) => s + (o.p.amount ?? 0), 0) * 100) / 100,
+      due_date: list[0].p.due_date ?? base.date,
+    });
+  }
+  return out;
+}
+
+const installmentsOf = (d: IssuedDocument, keep: (p: Json) => boolean): Installment[] =>
+  (d.payments_list ?? []).map((p, i) => ({ p, i })).filter(({ p }) => keep(p));
+
 /** Open items: each unpaid installment, plus the whole open balance when there are several. */
 export function openItems(docs: IssuedDocument[]): OpenItem[] {
-  const out: OpenItem[] = [];
+  return docs
+    .filter((d) => d.type !== "credit_note" && d.id)
+    .flatMap((d) => installmentItems(d, installmentsOf(d, (p) => p.status === "not_paid")));
+}
+
+/** Collections already registered: each paid installment, plus the sum of those paid on the same day. */
+export function paidItems(docs: IssuedDocument[]): PaidItem[] {
+  const out: PaidItem[] = [];
   for (const d of docs) {
     if (d.type === "credit_note" || !d.id) continue;
-    const base = {
-      document_id: d.id,
-      document: `${d.number ?? "?"}${d.numeration ?? ""} del ${d.date}`,
-      number: d.number ?? null,
-      date: d.date ?? "",
-      client: d.entity?.name ?? "",
-      vat_number: d.entity?.vat_number?.replace(/^IT/i, "") || undefined,
-      tax_code: d.entity?.tax_code || undefined,
-    };
-    const open = (d.payments_list ?? []).map((p, i) => ({ p, i })).filter(({ p }) => p.status === "not_paid");
-    for (const { p, i } of open) out.push({ ...base, installments: [i], amount: p.amount ?? 0, due_date: p.due_date ?? base.date });
-    if (open.length > 1) {
-      out.push({
-        ...base,
-        installments: open.map((o) => o.i),
-        amount: Math.round(open.reduce((s, o) => s + (o.p.amount ?? 0), 0) * 100) / 100,
-        due_date: open[0].p.due_date ?? base.date,
-      });
+    const paid = installmentsOf(d, (p) => p.status === "paid" && !!p.paid_date);
+    for (const day of new Set(paid.map(({ p }) => p.paid_date as string))) {
+      const sameDay = paid.filter(({ p }) => p.paid_date === day);
+      out.push(...installmentItems(d, sameDay).map((item) => ({ ...item, paid_date: day })));
     }
   }
   return out;
@@ -148,8 +175,59 @@ export function confidenceOf(score: number): Confidence {
 const RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 };
 export const atLeast = (c: Confidence, min: Confidence) => RANK[c] >= RANK[min];
 
-export function reconcile(transactions: BankTransaction[], items: OpenItem[]) {
-  const credits = transactions.filter((t) => t.amount > 0);
+/** A collection registered up to this many days after a transfer may well be that transfer. */
+const REGISTERED_LATE_DAYS = 45;
+/** Tolerance for a collection dated before the booking date (value date, weekend). */
+const REGISTERED_EARLY_DAYS = 3;
+
+const instKeys = (item: OpenItem) => item.installments.map((k) => `${item.document_id}:${k}`);
+const txText = (tx: BankTransaction) => `${tx.description} ${tx.counterparty ?? ""}`;
+const cites = (tx: BankTransaction, item: OpenItem) => mentionsInvoiceNumber(txText(tx), item.number, item.date);
+const sameClient = (a: OpenItem, b: OpenItem) => (a.vat_number && a.vat_number === b.vat_number) || a.client === b.client;
+
+/** True when `paidDate` is compatible with a manual or value-date registration of `tx`. */
+function registeredAround(tx: BankTransaction, paidDate: string): boolean {
+  const delay = daysBetween(tx.date, paidDate);
+  return delay >= -REGISTERED_EARLY_DAYS && delay <= REGISTERED_LATE_DAYS;
+}
+
+/**
+ * Transfers already registered as collected, so that running the reconciliation
+ * again cannot use them to pay a second invoice. A transfer is explained by a
+ * paid amount dated the same day, or citing its invoice number, unless an open
+ * invoice fits it better. Each paid installment explains one transfer only.
+ */
+function alreadyRecorded(credits: BankTransaction[], items: OpenItem[], paid: PaidItem[]) {
+  const pairs: { t: number; item: PaidItem; score: number; distance: number }[] = [];
+  credits.forEach((tx, t) => {
+    const bestOpen = Math.max(-Infinity, ...items.map((it) => scoreMatch(tx, it)?.score ?? -Infinity));
+    for (const item of paid) {
+      const s = scoreMatch(tx, item);
+      if (!s || s.score < bestOpen) continue;
+      const sameDay = tx.date === item.paid_date;
+      if (!sameDay && !(cites(tx, item) && registeredAround(tx, item.paid_date) && s.score >= MIN_SCORE)) continue;
+      pairs.push({ t, item, score: s.score, distance: Math.abs(daysBetween(tx.date, item.paid_date)) });
+    }
+  });
+  pairs.sort((a, b) => b.score - a.score || a.distance - b.distance);
+
+  const explained = new Map<number, PaidItem>();
+  const usedInst = new Set<string>();
+  for (const { t, item } of pairs) {
+    const keys = instKeys(item);
+    if (explained.has(t) || keys.some((k) => usedInst.has(k))) continue;
+    explained.set(t, item);
+    keys.forEach((k) => usedInst.add(k));
+  }
+  return { explained, usedInst };
+}
+
+export function reconcile(transactions: BankTransaction[], items: OpenItem[], paid: PaidItem[] = []) {
+  const incoming = transactions.filter((t) => t.amount > 0);
+  const recorded = alreadyRecorded(incoming, items, paid);
+  const credits = incoming.filter((_, t) => !recorded.explained.has(t));
+  /** Paid amounts with no transfer to account for them. */
+  const unexplained = paid.filter((p) => !instKeys(p).some((k) => recorded.usedInst.has(k)));
   const pairs: { t: number; i: number; score: number; reasons: string[] }[] = [];
   credits.forEach((tx, t) =>
     items.forEach((item, i) => {
@@ -177,6 +255,15 @@ export function reconcile(transactions: BankTransaction[], items: OpenItem[]) {
       confidence = "medium";
       reasons.push(`ambiguo: anche ${items[rival.i].document} ha lo stesso punteggio`);
     }
+    // collected with another date (e.g. marked paid by hand): this may be that same transfer
+    const tx = credits[p.t];
+    const twin = cites(tx, item)
+      ? undefined
+      : unexplained.find((q) => sameClient(q, item) && scoreMatch(tx, q) && registeredAround(tx, q.paid_date));
+    if (twin && confidence === "high") {
+      confidence = "medium";
+      reasons.push(`possibile doppione: fattura ${twin.document}, stesso importo, già saldata il ${twin.paid_date}`);
+    }
     usedTx.add(p.t);
     keys.forEach((k) => usedInst.add(k));
     matches.push({ transaction: credits[p.t], item, score: p.score, confidence, reasons });
@@ -185,6 +272,7 @@ export function reconcile(transactions: BankTransaction[], items: OpenItem[]) {
   matches.sort((a, b) => a.transaction.date.localeCompare(b.transaction.date));
   return {
     matches,
+    already_recorded: [...recorded.explained].map(([t, item]) => ({ transaction: incoming[t], item })),
     unmatched_credits: credits.filter((_, t) => !usedTx.has(t)),
     still_open: items.filter((it) => it.installments.length === 1 && !usedInst.has(`${it.document_id}:${it.installments[0]}`)),
   };

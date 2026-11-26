@@ -12,7 +12,9 @@ const COMPANY_LOOKUPS = [
 ] as const;
 const GLOBAL_LOOKUPS = ["templates", "currencies", "languages", "countries", "measures", "dn_causals"] as const;
 
-export function registerAdminTools(ctx: Ctx) {
+export function registerAdminTools(ctx: Ctx, opts: { apiWrites: boolean }) {
+  const methods: ("GET" | "POST" | "PUT" | "DELETE")[] = opts.apiWrites ? ["GET", "POST", "PUT", "DELETE"] : ["GET"];
+
   tool(
     ctx,
     "list_companies",
@@ -100,14 +102,15 @@ export function registerAdminTools(ctx: Ctx) {
       description:
         "Chiamata diretta all'API v2 per tutto ciò che non ha un tool dedicato (impostazioni, listini, webhook, documenti in attesa...). " +
         "`path` relativo all'azienda (es. '/settings/payment_accounts') oppure assoluto se inizia con /user, /info o /c/. " +
-        "Riferimento: https://developers.fattureincloud.it/api-reference/",
+        "Riferimento: https://developers.fattureincloud.it/api-reference/" +
+        (opts.apiWrites ? "" : " Sola lettura (GET): FIC_TOOLSETS limita i gruppi attivi."),
       input: {
-        method: z.enum(["GET", "POST", "PUT", "DELETE"]),
+        method: z.enum(methods),
         path: z.string().startsWith("/"),
         query: z.record(z.string(), z.any()).optional(),
         body: z.any().optional().describe("Corpo JSON, di solito { data: {...} }"),
       },
-      annotations: { destructiveHint: true, openWorldHint: true },
+      annotations: opts.apiWrites ? { destructiveHint: true, openWorldHint: true } : { readOnlyHint: true },
     },
     async ({ method, path, query, body }, c) => {
       const absolute = /^\/(user|info|c)\b/.test(path);

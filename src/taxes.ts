@@ -20,11 +20,18 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { dataDir } from "./schedules.js";
 
+/** Massimale contributivo della gestione separata per anno (2026: circolare INPS n. 8 del 3/2/2026). */
+export const GESTIONE_SEPARATA_MAX: Record<number, number> = { 2025: 120_607, 2026: 122_295 };
+
+/** Massimale of `year`, or of the closest known year before it (the first known one for older years). */
+export function gestioneSeparataMax(year: number): number {
+  const known = Object.keys(GESTIONE_SEPARATA_MAX).map(Number).sort((a, b) => a - b);
+  return GESTIONE_SEPARATA_MAX[known.filter((y) => y <= year).at(-1) ?? known[0]];
+}
+
 export const DEFAULTS = {
-  /** Aliquota gestione separata INPS per chi non ha altra copertura (2025). */
+  /** Aliquota gestione separata INPS per chi non ha altra copertura (2025 e 2026). */
   gestione_separata_rate: 0.2607,
-  /** Massimale contributivo gestione separata (2025). */
-  gestione_separata_max: 120_607,
   artigiani_rate: 0.24,
   commercianti_rate: 0.2448,
   tax_advance_min: 51.65,
@@ -99,13 +106,13 @@ export interface YearCalc {
   tax_balance: number;
 }
 
-function contributionsDue(p: TaxProfile, grossIncome: number, yearRate?: number): { fixed: number; variable: number } {
+function contributionsDue(p: TaxProfile, grossIncome: number, year: number, yearRate?: number): { fixed: number; variable: number } {
   const inps = yearRate !== undefined && (p.inps.type === "gestione_separata" || p.inps.type === "cassa") ? { ...p.inps, rate: yearRate } : p.inps;
   switch (inps.type) {
     case "gestione_separata":
       return {
         fixed: 0,
-        variable: Math.min(grossIncome, inps.max_income ?? DEFAULTS.gestione_separata_max) * (inps.rate ?? DEFAULTS.gestione_separata_rate),
+        variable: Math.min(grossIncome, inps.max_income ?? gestioneSeparataMax(year)) * (inps.rate ?? DEFAULTS.gestione_separata_rate),
       };
     case "artigiani":
     case "commercianti": {
@@ -147,7 +154,7 @@ export function computeYears(p: TaxProfile, revenueByYear: Record<number, number
     const prev = out.get(y - 1);
     const revenue = active ? (ov.revenue ?? revenueByYear[y] ?? 0) : 0;
     const gross = revenue * p.coefficient;
-    const { fixed, variable } = contributionsDue(p, gross, ov.inps_rate);
+    const { fixed, variable } = contributionsDue(p, gross, y, ov.inps_rate);
 
     const cAdv = (() => {
       if (ov.contribution_advances_paid !== undefined) return [ov.contribution_advances_paid / 2, ov.contribution_advances_paid / 2] as [number, number];
@@ -241,8 +248,17 @@ export function deadlinesFor(p: TaxProfile, years: Map<number, YearCalc>, y: num
   return out.filter((d) => d.items.length);
 }
 
+/** For reports on a single year, which make no sense before the business existed. */
+export function assertBusinessOpen(p: TaxProfile, year: number) {
+  if (p.start_year && year < p.start_year)
+    throw new Error(
+      `Nel ${year} la partita IVA non era ancora aperta (start_year ${p.start_year} nel profilo fiscale): scegli un anno dal ${p.start_year} in poi.`,
+    );
+}
+
 export function taxReport(p: TaxProfile, revenueByYear: Record<number, number>, year: number, opts: { projected_revenue?: number } = {}) {
-  const from = Math.max(p.start_year ?? year - 3, year - 3);
+  // `year` is always computed, even before start_year (as an inactive year)
+  const from = Math.min(year, Math.max(p.start_year ?? year - 3, year - 3));
   const revenues = { ...revenueByYear };
   if (opts.projected_revenue !== undefined) revenues[year] = opts.projected_revenue;
   const years = computeYears(p, revenues, from, year + 1);

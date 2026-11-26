@@ -62,6 +62,37 @@ describe("tool catalogue", () => {
     const prompts = (await mcp.listPrompts()).prompts.map((p) => p.name);
     expect(prompts).toEqual(["chiusura_mese", "nuova_ricorrenza"]);
   });
+
+  const connect = async (opts: Parameters<typeof createServer>[1]) => {
+    const server = createServer(new FicClient({ token: "t", fetchImpl: api.fetchImpl }), { store, ...opts });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    await server.connect(a);
+    mcp = new Client({ name: "test", version: "0" });
+    await mcp.connect(b);
+    return (await mcp.listTools()).tools;
+  };
+  const methods = (tools: any[]) => tools.find((t) => t.name === "api_request").inputSchema.properties.method.enum;
+
+  it("api_request is read-only when the toolsets are restricted", async () => {
+    const tools = await connect({ toolsets: parseToolsets("reports") });
+    expect(methods(tools)).toEqual(["GET"]);
+    await expect(call("api_request", { method: "DELETE", path: "/issued_documents/26" })).rejects.toThrow(/method/);
+    expect(api.docs.has(26)).toBe(true);
+    expect(methods(await connect({ toolsets: parseToolsets("all") }))).toEqual(["GET", "POST", "PUT", "DELETE"]);
+  });
+
+  it("remote mode offers nothing that touches the server's files", async () => {
+    const tools = await connect({ remote: true });
+    const names = tools.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(["duplicate_document", "bulk_duplicate", "api_request"]));
+    for (const n of ["upload_attachment", "schedule_create", "schedule_run_due", "bank_parse_statement", "bank_reconcile", "tax_profile_get", "quadro_lm", "tax_deadlines_export", "accountant_package"])
+      expect(names).not.toContain(n);
+    for (const n of ["get_einvoice_xml", "get_document_pdf"]) expect(tools.find((t) => t.name === n)!.inputSchema.properties).not.toHaveProperty("save_to");
+    const target = path.join(store.dir, "scritto.xml");
+    await call("get_einvoice_xml", { id: 26, save_to: target });
+    await expect(readFile(target)).rejects.toThrow(/ENOENT/);
+    expect((await mcp.listPrompts()).prompts.map((p) => p.name)).toEqual(["chiusura_mese"]);
+  });
 });
 
 describe("documents", () => {
@@ -140,6 +171,18 @@ describe("schedules", () => {
     expect(saved.history).toHaveLength(1);
     expect(saved.next_run! > "2026-01-05").toBe(true);
   });
+
+  it("does not email an invoice that failed the SdI check", async () => {
+    api.state.verifyOk = false;
+    const { schedule } = await call("schedule_create", {
+      name: "Acme mensile", source_document_id: 26, day_of_month: 5, action: "create_and_send_sdi", email: { enabled: true },
+    });
+    const { run } = await call("schedule_run_now", { id: schedule.id, dry_run: false });
+    expect(run).toMatchObject({ status: "error", sent_sdi: false, message: expect.stringMatching(/Email al cliente non inviata/) });
+    expect(run.emailed).toBeUndefined();
+    expect(api.state.emails).toEqual([]);
+    expect(api.state.sent).toEqual([]);
+  });
 });
 
 describe("taxes", () => {
@@ -151,6 +194,18 @@ describe("taxes", () => {
     expect(r.collected_to_date).toBe(1202);
     expect(r.year_summary.gross_income).toBeCloseTo(937.56, 2);
     expect(r.deadlines.at(-1).date).toBe("2027-06-30");
+  });
+});
+
+describe("years before the business opened", () => {
+  it("explains why there is nothing to report", async () => {
+    await call("tax_profile_set", { coefficient: 0.78, tax_rate: 0.15, start_year: 2026 });
+    for (const tool of ["tax_estimate", "quadro_lm"]) await expect(call(tool, { year: 2025 })).rejects.toThrow(/2025 la partita IVA non era ancora aperta.*2026/);
+  });
+
+  it("a profile opening in the future does not break the deadlines", async () => {
+    await call("tax_profile_set", { coefficient: 0.78, tax_rate: 0.15, start_year: 2099 });
+    expect((await call("cashflow_forecast", { months: 3 })).months).toHaveLength(3);
   });
 });
 
@@ -203,6 +258,17 @@ describe("planning", () => {
     );
     expect(strFromU8(files["commercialista-2026/fatture.csv"])).toContain("IT01234567890");
     expect(strFromU8(files["commercialista-2026/riepilogo.md"])).toContain("Stima imposta e contributi");
+    expect(r).toMatchObject({ complete: true, errors: [] });
+  });
+
+  it("accountant_package says so when expenses cannot be downloaded", async () => {
+    api.state.receivedDown = true;
+    const r = await call("accountant_package", { year: 2026, output_dir: store.dir });
+    expect(r).toMatchObject({ complete: false, expenses: null });
+    expect(r.errors[0]).toMatch(/spese\.csv non generato.*503/);
+    const files = unzipSync(new Uint8Array(await readFile(r.zip)));
+    expect(Object.keys(files)).not.toContain("commercialista-2026/spese.csv");
+    expect(strFromU8(files["commercialista-2026/riepilogo.md"])).toContain("pacchetto incompleto");
   });
 });
 
@@ -222,6 +288,7 @@ describe("bank", () => {
 
     const again = await call("bank_reconcile", { file_path: file });
     expect(again.matches).toHaveLength(0);
+    expect(again.already_recorded).toEqual([expect.objectContaining({ fattura: expect.objectContaining({ id: 26, paid_date: "2026-10-05" }) })]);
   });
 
   it("bank_link_start explains missing configuration", async () => {

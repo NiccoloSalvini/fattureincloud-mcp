@@ -124,10 +124,10 @@ function summaryMarkdown(year: number, rev: ReturnType<typeof revenueSummary>, a
     `- \`fatture.csv\`: ${counts.documents} documenti emessi`,
     `- \`incassi.csv\`: incassi dell'anno per data`,
     `- \`crediti_aperti.csv\``,
-    `- \`spese.csv\`: ${counts.expenses} documenti ricevuti`,
+    counts.expenses === null ? "- `spese.csv`: NON generato (vedi sotto)" : `- \`spese.csv\`: ${counts.expenses} documenti ricevuti`,
     `- \`pdf/\`: ${counts.pdf} PDF`,
     `- \`xml/\`: ${counts.xml} XML FatturaPA`,
-    ...(counts.errors.length ? ["", "## File non scaricati", "", ...counts.errors.map((e: string) => `- ${e}`)] : []),
+    ...(counts.errors.length ? ["", "## ATTENZIONE: pacchetto incompleto", "", ...counts.errors.map((e: string) => `- ${e}`)] : []),
     "",
   );
   return lines.join("\n");
@@ -158,17 +158,23 @@ export async function buildAccountantPackage(
   const docs = await fetchIssued(c, ["invoice", "credit_note"], `date >= '${year}-01-01' and date <= '${year}-12-31'`);
   // invoices of the previous year collected this year matter for the cash view
   const prevDocs = await fetchIssued(c, ["invoice", "credit_note"], `date >= '${year - 1}-01-01' and date <= '${year - 1}-12-31'`);
-  const expenses = await c.listAll("/received_documents", { type: "expense", q: `date >= '${year}-01-01' and date <= '${year}-12-31'`, fieldset: "detailed" }, 3000).catch(() => []);
+  const errors: string[] = [];
+  // null = download failed: an empty spese.csv would look like a year without expenses
+  const expenses = await c
+    .listAll("/received_documents", { type: "expense", q: `date >= '${year}-01-01' and date <= '${year}-12-31'`, fieldset: "detailed" }, 3000)
+    .catch((e: any) => {
+      errors.push(`spese.csv non generato, spese non scaricate: ${e.message}`);
+      return null;
+    });
 
   const files: Record<string, Uint8Array> = {};
-  const errors: string[] = [];
   files["fatture.csv"] = strToU8(invoicesCsv(docs));
   files["incassi.csv"] = strToU8(collectionsCsv([...prevDocs, ...docs], year));
   const rec = receivables(docs, today);
   files["crediti_aperti.csv"] = strToU8(
     toCsv(["Documento", "Cliente", "Scadenza", "Importo", "Giorni di ritardo"], rec.rows.map((r) => [r.document, r.client, r.due_date, eur(r.amount), r.days_overdue])),
   );
-  files["spese.csv"] = strToU8(expensesCsv(expenses));
+  if (expenses) files["spese.csv"] = strToU8(expensesCsv(expenses));
 
   let pdf = 0;
   let xml = 0;
@@ -195,13 +201,19 @@ export async function buildAccountantPackage(
 
   const rev = revenueSummary([...prevDocs, ...docs], year, today);
   const aud = audit(docs, today, { check_stamp_duty: true });
-  const tax = opts.profile ? await estimateTaxes(c, opts.profile, year, { projection: "to_date", today }).catch(() => null) : null;
-  files["riepilogo.md"] = strToU8(summaryMarkdown(year, rev, aud, rec, tax, { documents: docs.length, expenses: expenses.length, pdf, xml, errors }));
+  const tax = opts.profile
+    ? await estimateTaxes(c, opts.profile, year, { projection: "to_date", today }).catch((e: any) => {
+        errors.push(`Stima di imposta e contributi non calcolata: ${e.message}`);
+        return null;
+      })
+    : null;
+  const expenseCount = expenses?.length ?? null;
+  files["riepilogo.md"] = strToU8(summaryMarkdown(year, rev, aud, rec, tax, { documents: docs.length, expenses: expenseCount, pdf, xml, errors }));
 
   const dir = (opts.output_dir ?? path.join(os.homedir(), "Downloads")).replace(/^~(?=\/)/, os.homedir());
   await fs.mkdir(dir, { recursive: true });
   const zipPath = path.join(dir, `commercialista-${year}.zip`);
   const prefixed = Object.fromEntries(Object.entries(files).map(([k, v]) => [`commercialista-${year}/${k}`, v]));
   await fs.writeFile(zipPath, zipSync(prefixed, { level: 6 }));
-  return { zip: zipPath, documents: docs.length, expenses: expenses.length, pdf, xml, errors };
+  return { zip: zipPath, complete: errors.length === 0, documents: docs.length, expenses: expenseCount, pdf, xml, errors };
 }
