@@ -6,3 +6,28 @@ dist/
 coverage/
 build/
 .claude/worktrees/
+
+# segreti
+.env.*
+*.pem
+*.key
+*.p12
+.mcp.json
+claude_desktop_config.json
+
+# dati creati dal server
+schedules.json
+tax-profile.json
+bank-sessions.json
+run.lock
+
+# estratti conto ed esportazioni
+*.csv
+*.xlsx
+*.xls
+*.zip
+*.pdf
+*.p7m
+*.ics
+*.mcpb
+fattura-*.xml
